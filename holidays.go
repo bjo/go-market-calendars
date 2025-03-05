@@ -462,6 +462,22 @@ var (
 		PlatinumJubilee,
 		PlatinumJubilee.Copy("Platinum Jubilee day 2").SetOffset(1),
 	}
+	// State Funeral of Queen Elizabeth II - 19 Sep 2022
+	QueenElizabethFuneral = &Holiday{
+		Name:   "State Funeral of Queen Elizabeth II",
+		Month:  time.September,
+		Day:    19,
+		OnYear: 2022,
+		calc:   CalcDayOfMonth,
+	}
+	// King Charles III Coronation Bank Holiday - 8 May 2023
+	KingCharlesCoronation = &Holiday{
+		Name:   "King Charles III Coronation Bank Holiday",
+		Month:  time.May,
+		Day:    8,
+		OnYear: 2023,
+		calc:   CalcDayOfMonth,
+	}
 )
 
 // Netherlands Holidays

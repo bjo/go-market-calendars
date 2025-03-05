@@ -609,12 +609,53 @@ func TestSummerHoliday(t *testing.T) {
 	assert.Equal(time.Date(2024, 8, 26, 0, 0, 0, 0, NewYork), SummerHoliday.Calc(2024, NewYork))
 	assert.Equal(time.Date(2025, 8, 25, 0, 0, 0, 0, NewYork), SummerHoliday.Calc(2025, NewYork))
 }
-func TestQueensday(t *testing.T) {
+
+// UK Special Days
+func TestGoldenJubilee(t *testing.T) {
 	assert := assert.New(t)
-	assert.Equal(time.Date(2020, 4, 30, 0, 0, 0, 0, NewYork), QueensDay.Calc(2020, NewYork))
-	assert.Equal(time.Date(2021, 4, 30, 0, 0, 0, 0, NewYork), QueensDay.Calc(2021, NewYork))
-	assert.Equal(time.Time{}, QueensDay.Calc(2022, NewYork))
-	assert.Equal(time.Time{}, QueensDay.Calc(2023, NewYork))
-	assert.Equal(time.Date(2024, 4, 30, 0, 0, 0, 0, NewYork), QueensDay.Calc(2024, NewYork))
-	assert.Equal(time.Date(2025, 4, 30, 0, 0, 0, 0, NewYork), QueensDay.Calc(2025, NewYork))
+	assert.Equal(time.Time{}, GoldenJubilee.Calc(2001, London))
+	assert.Equal(time.Date(2002, 6, 3, 0, 0, 0, 0, London), GoldenJubilee.Calc(2002, London))
+	assert.Equal(time.Time{}, GoldenJubilee.Calc(2003, London))
+}
+func TestWilliamWedding(t *testing.T) {
+	assert := assert.New(t)
+	assert.Equal(time.Time{}, WilliamWedding.Calc(2010, London))
+	assert.Equal(time.Date(2011, 4, 29, 0, 0, 0, 0, London), WilliamWedding.Calc(2011, London))
+	assert.Equal(time.Time{}, WilliamWedding.Calc(2012, London))
+}
+func TestDiamondJubilee(t *testing.T) {
+	assert := assert.New(t)
+	assert.Equal(time.Time{}, DiamondJubilee.Calc(2011, London))
+	assert.Equal(time.Date(2012, 6, 4, 0, 0, 0, 0, London), DiamondJubilee.Calc(2012, London))
+	assert.Equal(time.Time{}, DiamondJubilee.Calc(2013, London))
+}
+func TestVEAnniversary(t *testing.T) {
+	assert := assert.New(t)
+	assert.Equal(time.Time{}, VEAnniversary.Calc(2019, London))
+	assert.Equal(time.Date(2020, 5, 8, 0, 0, 0, 0, London), VEAnniversary.Calc(2020, London))
+	assert.Equal(time.Time{}, VEAnniversary.Calc(2021, London))
+}
+func TestPlatinumJubilee(t *testing.T) {
+	assert := assert.New(t)
+	assert.Equal(time.Time{}, PlatinumJubilee.Calc(2021, London))
+	assert.Equal(time.Date(2022, 6, 2, 0, 0, 0, 0, London), PlatinumJubilee.Calc(2022, London))
+	assert.Equal(time.Time{}, PlatinumJubilee.Calc(2023, London))
+}
+func TestQueenElizabethFuneral(t *testing.T) {
+	assert := assert.New(t)
+	assert.Equal(time.Time{}, QueenElizabethFuneral.Calc(2020, London))
+	assert.Equal(time.Time{}, QueenElizabethFuneral.Calc(2021, London))
+	assert.Equal(time.Date(2022, 9, 19, 0, 0, 0, 0, London), QueenElizabethFuneral.Calc(2022, London))
+	assert.Equal(time.Time{}, QueenElizabethFuneral.Calc(2023, London))
+	assert.Equal(time.Time{}, QueenElizabethFuneral.Calc(2024, London))
+	assert.Equal(time.Time{}, QueenElizabethFuneral.Calc(2025, London))
+}
+func TestKingCharlesCoronation(t *testing.T) {
+	assert := assert.New(t)
+	assert.Equal(time.Time{}, KingCharlesCoronation.Calc(2020, London))
+	assert.Equal(time.Time{}, KingCharlesCoronation.Calc(2021, London))
+	assert.Equal(time.Time{}, KingCharlesCoronation.Calc(2022, London))
+	assert.Equal(time.Date(2023, 5, 8, 0, 0, 0, 0, London), KingCharlesCoronation.Calc(2023, London))
+	assert.Equal(time.Time{}, KingCharlesCoronation.Calc(2024, London))
+	assert.Equal(time.Time{}, KingCharlesCoronation.Calc(2025, London))
 }

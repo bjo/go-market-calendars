@@ -140,6 +140,8 @@ func XLON(years ...int) *Calendar {
 	c.AddHolidays(DiamondJubileeDays...)
 	c.AddHolidays(VEAnniversary)
 	c.AddHolidays(PlatinumJubileeDays...)
+	c.AddHolidays(QueenElizabethFuneral)
+	c.AddHolidays(KingCharlesCoronation)
 	// Early Closing
 	c.AddEarlyClosingDays(
 		ChristmasEve,
