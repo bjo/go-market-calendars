@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/scmhub/calendar"
+	"github.com/bjo/go-market-calendars"
 )
 
 func main() {
