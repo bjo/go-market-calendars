@@ -132,8 +132,10 @@ err := calendar.SetAdjustments("xnys", []calendar.Adjustment{
 Each call replaces the whole set for that exchange, and `nil` clears it.
 Swaps are atomic, so the call is safe while other goroutines query. Every
 query honours adjustments, including holidays, early closes and the
-Next/Previous searches. `Adjustments(code)` returns the installed set, and
-`CheckAdjustments` validates a set without installing it. For
+Next/Previous searches. `Adjustments(code)` returns the installed set,
+`CheckAdjustments` validates a set without installing it, and
+`c.Unadjusted()` returns a copy of a calendar that answers from the
+generated data alone (for comparisons or exports). For
 corrections that should ship with the data, use `overrides.toml` instead.
 
 ## Exchanges

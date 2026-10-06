@@ -106,13 +106,16 @@ func (d *calData) regular(k day) hours {
 	return d.periods[i].hours
 }
 
-// session returns the hours of the session on day k, if k is one. Runtime
-// adjustments take precedence over the generated data.
-func (d *calData) session(k day) (hours, bool) {
+// session returns the hours of the session on day k in the generated data.
+func (d *calData) session(k day) (hours, bool) { return d.sessionIn(nil, k) }
+
+// sessionIn returns the hours of the session on day k, if k is one. The
+// adjustments in v, if any, take precedence over the generated data.
+func (d *calData) sessionIn(v *adjustedView, k day) (hours, bool) {
 	if k < d.first || k > d.last {
 		return hours{}, false
 	}
-	if v := d.adj.Load(); v != nil {
+	if v != nil {
 		if a, ok := v.byDay[k]; ok {
 			return a.hours, !a.closed
 		}

@@ -151,11 +151,30 @@ func (d *calData) offset(k day, t time.Time) time.Duration {
 		time.Duration(lt.Hour())*time.Hour + time.Duration(lt.Minute())*time.Minute + time.Duration(lt.Second())*time.Second
 }
 
-// effectiveHolidays returns the holidays in force: the generated ones, or
-// those of the installed adjustments.
-func (d *calData) effectiveHolidays() (map[day]string, []day) {
-	if v := d.adj.Load(); v != nil {
+// view returns the runtime adjustments this Calendar answers with: none for
+// an Unadjusted copy.
+func (c *Calendar) view() *adjustedView {
+	if c.unadjusted {
+		return nil
+	}
+	return c.d.adj.Load()
+}
+
+func (c *Calendar) sessionOn(k day) (hours, bool) { return c.d.sessionIn(c.view(), k) }
+
+// holidaysInForce returns the holidays this Calendar answers with.
+func (c *Calendar) holidaysInForce() (map[day]string, []day) {
+	if v := c.view(); v != nil {
 		return v.holidays, v.holidayDays
 	}
-	return d.holidays, d.holidayDays
+	return c.d.holidays, c.d.holidayDays
+}
+
+// Unadjusted returns a copy of c that ignores runtime adjustments and answers
+// from the generated data alone, e.g. to compare adjustments with it or to
+// export it.
+func (c *Calendar) Unadjusted() *Calendar {
+	u := *c
+	u.unadjusted = true
+	return &u
 }

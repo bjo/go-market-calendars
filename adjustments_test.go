@@ -165,3 +165,23 @@ func TestAdjustmentsDoNotLeakAcrossCalendars(t *testing.T) {
 	require.NoError(t, SetAdjustments("xnys", []Adjustment{{Date: ny(2026, 12, 28, 0, 0), Closed: true}}))
 	assert.True(t, XNAS().IsBusinessDay(ny(2026, 12, 28, 0, 0)))
 }
+
+func TestUnadjustedIgnoresRuntimeAdjustments(t *testing.T) {
+	resetAdjustments(t, "xnys")
+	c := XNYS()
+	day := ny(2026, 12, 28, 0, 0)
+	xmas := ny(2026, 12, 25, 0, 0)
+	require.NoError(t, SetAdjustments("xnys", []Adjustment{
+		{Date: day, Closed: true, Name: "Day of mourning"},
+		{Date: xmas, Open: ny(2026, 12, 25, 9, 30), Close: ny(2026, 12, 25, 16, 0)},
+	}))
+	base := c.Unadjusted()
+	assert.False(t, c.IsBusinessDay(day))
+	assert.True(t, base.IsBusinessDay(day), "the generated data says open")
+	assert.True(t, base.IsHoliday(xmas))
+	assert.False(t, c.IsHoliday(xmas))
+	assert.Len(t, base.Holidays(ny(2026, 12, 1, 0, 0), ny(2026, 12, 31, 0, 0)), 1)
+	assert.Equal(t, ny(2026, 12, 28, 16, 0), base.NextClose(day))
+	assert.False(t, c.Unadjusted() == c, "a copy; c itself still honours adjustments")
+	assert.False(t, c.IsBusinessDay(day))
+}
