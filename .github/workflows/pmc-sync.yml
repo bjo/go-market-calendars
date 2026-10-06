@@ -54,7 +54,7 @@ jobs:
         id: test
         if: steps.changes.outputs.changed == 'true'
         continue-on-error: true
-        run: go test ./...
+        run: go test -count=1 ./...
 
       - name: Open the pull request
         if: steps.changes.outputs.changed == 'true'

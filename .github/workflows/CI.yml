@@ -25,6 +25,6 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test (includes regeneration drift check against pandas_market_calendars)
-        run: go test -race ./...
+        run: go test -count=1 -race ./... # -count=1: the drift check reads files Go cannot track
       - name: Diff report runs
         run: uv run --locked --project gen gen/diff.py
