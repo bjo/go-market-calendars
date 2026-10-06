@@ -188,6 +188,24 @@ uv run --locked --project gen gen/generate.py --check
   and is skipped in `-short` mode or without it);
 - no query panics for any date.
 
+### Staying current
+
+A weekly workflow (`.github/workflows/pmc-sync.yml`, Mondays) upgrades
+pandas_market_calendars and exchange_calendars to their latest **PyPI
+releases** and regenerates. If anything changed, it opens a pull request
+whose description lists, per exchange, the days that became closures or
+sessions and the sessions whose hours changed, flagging those within a
+month before or a year after the run date (they change live behaviour).
+`gen/diff.py` produces that report and can be run locally:
+
+```bash
+uv run --locked --project gen gen/diff.py --base main
+```
+
+Merging the pull request and tagging a release is a manual step.
+Unreleased upstream fixes are not picked up; use `overrides.toml` when a
+correction cannot wait for a release.
+
 ### Overrides
 
 `overrides.toml` holds corrections and additions on top of
