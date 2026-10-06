@@ -1,0 +1,8 @@
+[project]
+name = "go-market-calendars-gen"
+version = "0.1.0"
+description = "Generates go-market-calendars' embedded exchange data from pandas_market_calendars"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas_market_calendars==5.5.0",
+]

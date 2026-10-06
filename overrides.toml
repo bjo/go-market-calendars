@@ -1,0 +1,24 @@
+# Corrections and additions applied on top of pandas_market_calendars by
+# gen/generate.py. Every entry needs a reason and a public primary source
+# (an exchange notice, a regulator filing, an official gazette, ...).
+#
+# action = "close": the exchange was closed on a date the source shows as a
+#                   session.
+# action = "open":  the exchange traded on a date the source shows as closed;
+#                   optional open/close ("HH:MM", exchange-local) override the
+#                   regular hours for that day.
+#
+# The generator rejects entries without a reason or source, entries outside a
+# calendar's coverage, and entries the source already agrees with, so stale
+# corrections cannot linger after an upstream fix.
+#
+# Example:
+#
+# [[override]]
+# calendar = "xnys"
+# date     = "2099-01-02"
+# action   = "close"
+# reason   = "National day of mourning"
+# source   = "https://www.nyse.com/..."
+#
+# No overrides are needed today.
