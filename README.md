@@ -1,244 +1,207 @@
-# ![SCM logo](logo.png) Exchange Calendars
+# go-market-calendars
 
-![Build Status](https://github.com/scmhub/calendar/workflows/Build%20and%20Test/badge.svg)
-![Coverage](https://img.shields.io/badge/Coverage-97.5%25-brightgreen)
-[![GoReportCard](https://goreportcard.com/badge/github.com/scmhub/calendar)](https://goreportcard.com/report/github.com/scmhub/calendar)
-[![Go Reference](https://pkg.go.dev/badge/github.com/scmhub/calendar.svg)](https://pkg.go.dev/github.com/scmhub/calendar)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Go Reference](https://pkg.go.dev/badge/github.com/bjo/go-market-calendars.svg)](https://pkg.go.dev/github.com/bjo/go-market-calendars)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENCE)
 
-## Overview
+Exchange trading calendars for Go: sessions, holidays, early closes and
+trading hours for 37 exchanges, identified by their
+[ISO 10383](https://www.iso20022.org/market-identifier-codes) Market Identifier
+Code (MIC).
 
-`calendar` is a Golang package that provides exchange-specific calendar functionality. It enables you to manage market holidays, business days, early closes, and sessions defined by Market Identifier Codes (MIC) for various financial exchanges globally.
+The data is **generated from
+[pandas_market_calendars](https://github.com/rsheftel/pandas_market_calendars)**
+(which wraps [exchange_calendars](https://github.com/gerrymanoim/exchange_calendars)),
+so Go and Python code can share one source of truth. A drift test proves the
+embedded tables equal a fresh generation from the pinned version.
 
-## Features
+## Why this fork
 
-- **Business Day Calculations**: Check if a date is a business day, holiday, or early close.
-- **Custom Holidays**: Define and manage custom holidays (recurring or one-time events).
-- **Exchange Sessions**: Handle exchange sessions with customizable open/close times.
-- **Multi-Year Support**: Supports predefined calendars for financial exchanges over several years.
--  **Market Identifier Code**: Exchange calendars are defined by their [ISO-10383](https://www.iso20022.org/10383/iso-10383-market-identifier-codes) Market Identifier Code (MIC).
+This is a fork of [scmhub/calendar](https://github.com/scmhub/calendar), and it
+keeps that package's Go API shape (`calendar.XNYS()`, `IsBusinessDay`,
+`IsOpen`, `NextClose`, `Session()`, ...). It changes two things:
+
+- **No panics on historical or future dates.** scmhub/calendar builds a
+  rolling window of ±5 years around the current year and panics outside it, so
+  code that queries older dates breaks as the clock moves on. Here, each
+  calendar covers a fixed range (from 1970, or the exchange's first recorded
+  year, up to 2035). Out-of-range queries never panic: boolean queries return
+  `false`, `Check` returns `ErrOutOfRange`, and the Next/Previous queries
+  search from the nearest covered date.
+- **Data, not hand-written rules.** Some historical NYSE rules in
+  scmhub/calendar are wrong once you look past the last few years: Martin
+  Luther King Jr. Day closed the market only from 1998; Washington's Birthday
+  and Memorial Day moved to Mondays only in 1971; and there are special
+  closures such as presidential election days through 1980 and national days
+  of mourning. Instead of maintaining rules by hand, this fork generates its
+  data from pandas_market_calendars.
 
 ## Installation
 
-Install the package by running:
-
 ```bash
-go get github.com/scmhub/calendar
+go get github.com/bjo/go-market-calendars
+```
+
+The package name is `calendar`:
+
+```go
+import calendar "github.com/bjo/go-market-calendars"
 ```
 
 ## Usage
-#### Basic example
-```go
-import (
-    "fmt"
-    "time"
-    "github.com/scmhub/calendar"
-)
-
-func main() {
-    // Create a calendar with default years (current year ±5 years)
-	nyse := calendar.XNYS()
-
-    // Or create a calendar with a custom start and end year
-	customCal := calendar.XNYS(2010, 2035) // From 2010 to 2035
-
-    // Check if today is a business day
-     today := time.Now()
-    if nyse.IsBusinessDay(today) {
-        fmt.Println("Today is a business day.")
-    } else {
-        fmt.Println("Today is not a business day.")
-    }
-
-    // Get the next business day
-    nextBusinessDay := nyse.NextBusinessDay(today)
-    fmt.Printf("Next business day: %v\n", nextBusinessDay)
-
-	// Check if Black Friday 2030 is an early close
-	blackFriday := time.Date(2030, time.November, 29, 0, 0, 0, 0, calendar.NewYork)
-	fmt.Println(customCal.IsEarlyClose(blackFriday)) // Outputs: true
-}
-```
-
-#### Print specific calendar
-```go
-import (
-    "fmt"
-    "github.com/scmhub/calendar"
-)
-
-func main() {
-    // Load the New York Stock Exchange (XNYS) calendar
-    nyse := calendar.XNYS()
-
-    nyse.SetYears(2021,2022)
-
-    fmt.Print(nyse)
-}
-```
-Output
-```
-Calendar New York Stock Exchange:
-        2021-Jan-01 Fri    New Year's Day
-        2021-Jan-18 Mon    Martin Luther King Jr. Day
-        2021-Feb-15 Mon    Presidents' Day
-        2021-Apr-02 Fri    Good Friday
-        2021-May-31 Mon    Memorial Day
-        2021-Jul-05 Mon    Independence Day
-        2021-Sep-06 Mon    Labor Day
-        2021-Nov-25 Thu    Thanksgiving Day
-        2021-Nov-26 Fri    Black Friday
-        2021-Dec-24 Fri    Christmas Day
-        2022-Jan-17 Mon    Martin Luther King Jr. Day
-        2022-Feb-21 Mon    Presidents' Day
-        2022-Apr-15 Fri    Good Friday
-        2022-May-30 Mon    Memorial Day
-        2022-Jun-20 Mon    Juneteenth National Independence Day
-        2022-Jul-04 Mon    Independence Day
-        2022-Sep-05 Mon    Labor Day
-        2022-Nov-24 Thu    Thanksgiving Day
-        2022-Nov-25 Fri    Black Friday
-        2022-Dec-26 Mon    Christmas Day
-
-```
-
-#### Creating Holidays & Calendars
 
 ```go
-// Create Recurring Holidays
-MemorialDay = &Holiday{
-    Name:       "Memorial Day",
-    Month:      time.May,
-    Weekday:    time.Monday,
-    NthWeekday: -1,
-    calc:       CalcNthWeekday,
+nyse := calendar.XNYS()
+
+day := time.Date(2025, time.January, 9, 0, 0, 0, 0, calendar.NewYork)
+nyse.IsBusinessDay(day)   // false: national day of mourning for President Carter
+nyse.NextBusinessDay(day) // 2025-01-10
+
+// Historical dates work, and hours follow the data.
+nyse.IsBusinessDay(time.Date(1997, time.January, 20, 0, 0, 0, 0, calendar.NewYork)) // true: MLK Day before 1998
+nyse.NextClose(time.Date(1972, time.June, 1, 12, 0, 0, 0, calendar.NewYork))      // 15:30, the close until 1974
+
+// Instants: is the market trading right now?
+nyse.IsOpen(time.Now())
+
+// Out of range never panics.
+old := time.Date(1950, time.January, 3, 0, 0, 0, 0, calendar.NewYork)
+nyse.IsBusinessDay(old)                                // false
+errors.Is(nyse.Check(old), calendar.ErrOutOfRange)    // true
+
+// Look up by MIC.
+lse := calendar.GetCalendar("xlon")
+for _, h := range lse.Holidays(time.Date(2025, 1, 1, 0, 0, 0, 0, calendar.London), time.Date(2025, 12, 31, 0, 0, 0, 0, calendar.London)) {
+	fmt.Println(h.Date.Format("2006-01-02"), h.Name)
 }
-IndependenceDay = &Holiday{
-    Name:       "Independence Day",
-    Month:      time.July,
-    Day:        4,
-    observance: nearestWorkday,
-    calc:       CalcDayOfMonth,
-}
-
-// Create Non Recurring Holidays
-// September 11 - september 11, 2001
-SeptemberEleven = &Holiday{
-    Name:   "Sepember 11",
-    Month:  time.September,
-    Day:    11,
-    OnYear: 2001,
-    calc:   CalcDayOfMonth,
-}
-
-// September 11 -14 range
-SeptemberElevenDays = []*Holiday{
-    SeptemberEleven,
-    SeptemberEleven.Copy("Sepember 11 day 2").SetOffset(1),
-    SeptemberEleven.Copy("Sepember 11 day 3").SetOffset(2),
-    SeptemberEleven.Copy("Sepember 11 day 4").SetOffset(3),
-}
-
-// Copy an Holiday and set observance
-NewYear.Copy("New Year's Day").SetObservance(sundayToMonday)
-
-// Create a Calendar
-c := NewCalendar("New York Stock Exchange", NewYork, 2010, 2025)
-// Set Session
-c.SetSession(&Session{
-    EarlyOpen:  7 * time.Hour,
-    Open:       9*time.Hour + 30*time.Minute,
-    Close:      16 * time.Hour,
-    EarlyClose: 13 * time.Hour,
-    LateClose:  20 * time.Hour,
-})
-// Add Recurring Holidays
-c.AddHolidays(
-    NewYear.Copy().SetObservance(sundayToMonday),
-    MLKDay,
-    PresidentsDay,
-    GoodFriday,
-    MemorialDay,
-    JuneteenthDay,
-    IndependenceDay,
-    LaborDay,
-    ThanksgivingDay,
-    ChristmasDay.Copy().SetObservance(nearestWorkday),
-)
-// Add Non Recurring Holidays
-c.AddHolidays(USNationalDaysOfMourning...)
-c.AddHolidays(SeptemberElevenDays...)
-c.AddHolidays(HurricaneSandyDays...)
-// Early Closing
-c.AddEarlyClosingDays(
-    BeforeIndependenceDay.Copy().SetObservance(onlyOnWeekdays(time.Monday, time.Tuesday, time.Thursday)),
-    AfterIndependenceDay.Copy().SetBeforeYear(2013).SetObservance(onlyOnWeekdays(time.Friday)),
-    BeforeIndependenceDay.Copy().SetAfterYear(2013).SetObservance(onlyOnWeekdays(time.Wednesday)),
-    BlackFriday,
-    ChristmasEve.Copy().SetObservance(exeptOnWeekdays(time.Friday)), // Overlap Christmas day observance if friday
-)
-
 ```
-## Existing Calendar
 
-| Market place | Exchange                                                                     | MIC  |     |
-| ------------ | ---------------------------------------------------------------------------- | ---- | --- |
-| New York     | [New York Stock Exchange](https://www.nyse.com/index)                        | XNYS | ✅  |
-| New York     | [NASDAQ](https://www.nasdaq.com/)                                            | XNAS | ✅  |
-| Chicago      | [CBOE](http://markets.cboe.com)                                              | XCBO | ✅  |
-| Chicago      | [CBOE Futures Exchange](http://www.cfe.cboe.com)                             | XCBF | ✅  |
-| Toronto      | [Toronto Stock Exchange](https://www.tsx.com/)                               | XTSE |     |
-| Mexico       | [Mexican Stock Exchange](https://www.bmv.com.mx)                             | XMEX |     |
-| Sao Paulo    | [BMF Bovespa](http://www.b3.com.br/en_us/)                                   | BVMF |     |
-| London       | [London Stock Exchange](https://www.londonstockexchange.com)                 | XLON | ✅  |
-| Amsterdam    | [Euronext Amsterdam](http://www.euronext.com)                                | XAMS | ✅  |
-| Brussels     | [Euronext Brussels](http://www.euronext.com)                                 | XBRU | ✅  |
-| Lisbon       | [Euronext Lisbon](http://www.euronext.com)                                   | XLIS | ✅  |
-| Paris        | [Euronext Paris](http://www.euronext.com)                                    | XPAR | ✅  |
-| Milan        | [Euronext Milan - Borsa Italiana](http://www.borsaitaliana.it)               | XMIL | ✅  |
-| Madrid       | [Bolsa de Madrid](http://www.bolsamadrid.es)                                 | XMAD | ✅  |
-| Franckfurt   | [Deutsche Boerse](http://www.deutsche-boerse.com)                            | XFRA | ✅  |
-| Franckfurt   | [Xetra](http://www.deutsche-boerse.com)                                      | XETR | ✅  |
-| Zurich       | [SIX Swiss Exchange](http://www.six-group.com/en/site/exchanges.html)        | XSWX | ✅  |
-| Mumbai       | [Bombay Stock Exchange](https://www.bseindia.com)                            | XBOM |     |
-| Bangkok      | [Stock Exchange of Thailand](http://www.set.or.th/set/mainpage.do)           | XBKK |     |
-| Singapore    | [Singapore Exchange](https://www.sgx.com)                                    | XSES | ✅  |
-| Hong Kong    | [Hong Kong Stock Exchange](https://www.hkex.com.hk/index.html)               | XHKG | ✅  |
-| Shenzhen     | [Shenzhen Stock Exchange](http://www.szse.cn/English/index.html)             | XSHE | ✅  |
-| Shanghai     | [Shanghai Stock Exchange](http://www.sse.com.cn/sseportal/en/home/home.html) | XSHG | ✅  |
-| Seoul        | [Korea Exchange](http://eng.krx.co.kr)                                       | XKRX |     |
-| Tokyo        | [Japan Exchange Group](https://www.jpx.co.jp/english/)                       | XJPX | ✅  |
-| Sidney       | [Austrialian Securities Exchange](https://www.asx.com.au/)                   | XASX |     |
+### Dates and instants
 
-<!---
-| Chile          | [Santiago Stock Exchange](http://inter.bolsadesantiago.com/sitios/en/Paginas/home.aspx)  | XSGO |
-| Colombia       | [Colombia Securities Exchange](https://www.bvc.com.co/nueva/index_en.html)               | XBOG |
-| Peru           | [Lima Stock Exchange](https://www.bvl.com.pe)                                            | XLIM |
-| Iceland        | [Iceland Stock Exchange](http://www.nasdaqomxnordic.com/)                                | XICE |
-| Ireland        | [Irish Stock Exchange](http://www.ise.ie/)                                               | XDUB |
-| Denmark        | [Copenhagen Stock Exchange](http://www.nasdaqomxnordic.com/)                             | XCSE |
-| Finland        | [Helsinki Stock Exchange](http://www.nasdaqomxnordic.com/)                               | XHEL |
-| Sweden         | [Stockholm Stock Exchange](http://www.nasdaqomxnordic.com/)                              | XSTO |
-| Norway         | [Oslo Stock Exchange](https://www.oslobors.no/ob_eng/)                                   | XOSL |
-| Austria        | [Wiener Borse](https://www.wienerborse.at/en/)                                           | XWBO |
-| Czech Republic | [Prague Stock Exchange](https://www.pse.cz/en/)                                          | XPRA |
-| Hungary        | [Budapest Stock Exchange](https://bse.hu/)                                               | XBUD |
-| Poland         | [Poland Stock Exchange](http://www.gpw.pl)                                               | XWAR |
-| Greece         | [Athens Stock Exchange](http://www.helex.gr/)                                            | ASEX |
-| Turkey         | [Istanbul Stock Exchange](https://www.borsaistanbul.com/en/)                             | XIST |
-| Russia         | [Moscow Exchange](https://www.moex.com/en/)                                              | XMOS |
-| South Africa   | [Johannesburg Stock Exchange](https://www.jse.co.za/z)                                   | XJSE |
-| Malaysia       | [Malaysia Stock Exchange](http://www.bursamalaysia.com/market/)                          | XKLS |
-| Philippines    | [Philippine Stock Exchange](https://www.pse.com.ph/stockMarket/home.html)                | XPHS |
-| New Zealand    | [New Zealand Exchange](https://www.nzx.com/)                                             | XNZE |
---->
+Day-level queries (`IsBusinessDay`, `IsHoliday`, `IsEarlyClose`,
+`IsLateOpen`, `NextBusinessDay`, `PreviousBusinessDay`, `NextHoliday`,
+`Holidays`, `NextClose`, `SessionHours`) use the calendar date of `t` **as
+written, in t's own location**. So `2025-01-09T00:00Z` asks about 9 January.
+`IsOpen` takes an instant and converts it to the exchange's time zone.
 
-## API References
-Some key functions:
-- **IsBusinessDay(t time.Time)**: Returns whether the date is a business day.
-- **NextBusinessDay(t time.Time)**: Gets the next business day after the given date.
-- **AddHolidays(h ...Holiday)**: Adds holidays to the calendar.
-- **SetSession(session *Session)**: Configures open/close times for the exchange.
+### API
 
-## Contributing
-Contributions are welcome! Please submit issues or pull requests to improve the package. For significant changes, open an issue to discuss your ideas first.
+| Method | Notes |
+| --- | --- |
+| `IsBusinessDay(t)` | the date is a trading session |
+| `IsHoliday(t)` | the date is a weekday with no session (weekends are not holidays) |
+| `IsEarlyClose(t)`, `IsLateOpen(t)` | the session closes early or opens late versus that period's regular hours |
+| `IsOpen(t)` | the exchange is trading at instant `t`; bounds are inclusive, and lunch breaks are excluded |
+| `SessionHours(t)` | the session's actual open, close and break times |
+| `NextBusinessDay(t)`, `PreviousBusinessDay(t)` | keep `t`'s clock time and location |
+| `NextHoliday(t)`, `Holidays(start, end)` | holiday dates with the source's names, where it has them |
+| `NextClose(t)` | close of the session on `t`'s date, or of the next session |
+| `Session()` | the regular hours in force today, as offsets from midnight |
+| `Range()`, `Years()`, `InRange(t)`, `Check(t)` | the coverage range |
+| `GetCalendar(mic)`, `Names()` | registry lookup |
+
+### Differences from scmhub/calendar
+
+- Year arguments to `XNYS(...)`, `GetCalendar(name, ...)` and the other
+  constructors are accepted and ignored. Coverage is fixed by the data.
+- The holiday rule engine (`Holiday` rules, `AddHolidays`,
+  `AddEarlyClosingDays`, `NewCalendar`, `SetYears`, the observance helpers and
+  the lunar/solar-term helpers) is removed. To add or correct a date, use
+  `overrides.toml` (below). `Holiday` is now a plain `{Name, Date}` value.
+- `Session()` hours come from the data, including extended hours where the
+  source defines them (for US equities, `EarlyOpen` is 04:00 and `LateClose` is
+  20:00).
+- Out-of-range dates never panic.
+
+## Exchanges
+
+| MIC | Exchange | Time zone | From | To | pandas_market_calendars name |
+| --- | --- | --- | --- | --- | --- |
+| XNYS | New York Stock Exchange | America/New_York | 1970-01-01 | 2035-12-31 | `NYSE` |
+| XNAS | NASDAQ | America/New_York | 1971-02-08 | 2035-12-31 | `NASDAQ` |
+| XCBO | Chicago Board Options Exchange | America/Chicago | 1973-04-26 | 2035-12-31 | `CBOE_Equity_Options` |
+| XCBF | Cboe Futures Exchange | America/Chicago | 2004-03-26 | 2035-12-31 | `CFE` |
+| XTSE | Toronto Stock Exchange | America/Toronto | 1970-01-01 | 2035-12-31 | `XTSE` |
+| XMEX | Mexican Stock Exchange | America/Mexico_City | 1970-01-01 | 2035-12-31 | `XMEX` |
+| BVMF | B3 - Brasil Bolsa Balcão | America/Sao_Paulo | 1970-01-01 | 2035-12-31 | `BVMF` |
+| XLON | London Stock Exchange | Europe/London | 1970-01-01 | 2035-12-31 | `XLON` |
+| XAMS | Euronext Amsterdam | Europe/Amsterdam | 1970-01-01 | 2035-12-31 | `XAMS` |
+| XBRU | Euronext Brussels | Europe/Brussels | 1970-01-01 | 2035-12-31 | `XBRU` |
+| XLIS | Euronext Lisbon | Europe/Lisbon | 1970-01-01 | 2035-12-31 | `XLIS` |
+| XPAR | Euronext Paris | Europe/Paris | 1970-01-01 | 2035-12-31 | `XPAR` |
+| XMIL | Borsa Italiana | Europe/Rome | 1970-01-01 | 2035-12-31 | `XMIL` |
+| XMAD | Bolsa de Madrid | Europe/Madrid | 1970-01-01 | 2035-12-31 | `XMAD` |
+| XFRA | Frankfurt Stock Exchange | Europe/Berlin | 1970-01-01 | 2035-12-31 | `XFRA` |
+| XETR | Deutsche Börse Xetra | Europe/Berlin | 1997-11-28 | 2035-12-31 | `XETR` |
+| XSWX | SIX Swiss Exchange | Europe/Zurich | 1970-01-01 | 2035-12-31 | `XSWX` |
+| XDUB | Euronext Dublin | Europe/Dublin | 1970-01-01 | 2035-12-31 | `XDUB` |
+| XWBO | Wiener Börse | Europe/Vienna | 1970-01-01 | 2035-12-31 | `XWBO` |
+| XSTO | Nasdaq Stockholm | Europe/Stockholm | 1970-01-01 | 2035-12-31 | `XSTO` |
+| XCSE | Nasdaq Copenhagen | Europe/Copenhagen | 1970-01-01 | 2035-12-31 | `XCSE` |
+| XHEL | Nasdaq Helsinki | Europe/Helsinki | 1970-01-01 | 2035-12-31 | `XHEL` |
+| XOSL | Oslo Børs | Europe/Oslo | 1970-01-01 | 2035-12-31 | `XOSL` |
+| XJSE | Johannesburg Stock Exchange | Africa/Johannesburg | 1970-01-01 | 2035-12-31 | `XJSE` |
+| XBOM | BSE (Bombay Stock Exchange) | Asia/Calcutta | 1997-01-01 | 2026-12-31 | `XBOM` |
+| XNSE | National Stock Exchange of India | Asia/Calcutta | 1996-01-01 | 2026-12-31 | `XNSE` |
+| XBKK | Stock Exchange of Thailand | Asia/Bangkok | 1975-04-30 | 2035-12-31 | `XBKK` |
+| XSES | Singapore Exchange | Asia/Singapore | 1986-01-01 | 2026-12-31 | `XSES` |
+| XHKG | Hong Kong Stock Exchange | Asia/Hong_Kong | 1970-01-01 | 2035-12-31 | `XHKG` |
+| XSHG | Shanghai Stock Exchange | Asia/Shanghai | 1991-01-01 | 2026-12-31 | `XSHG` |
+| XSHE | Shenzhen Stock Exchange | Asia/Shanghai | 1991-01-01 | 2026-12-31 | `XSHG` |
+| XKRX | Korea Exchange | Asia/Seoul | 1970-01-01 | 2035-12-31 | `XKRX` |
+| XTAI | Taiwan Stock Exchange | Asia/Taipei | 1970-01-01 | 2035-12-31 | `XTAI` |
+| XJPX | Japan Exchange Group | Asia/Tokyo | 1997-01-01 | 2035-12-31 | `JPX` |
+| XTKS | Tokyo Stock Exchange | Asia/Tokyo | 1997-01-01 | 2035-12-31 | `XTKS` |
+| XASX | Australian Securities Exchange | Australia/Sydney | 1970-01-01 | 2035-12-31 | `XASX` |
+| XNZE | New Zealand Exchange | Pacific/Auckland | 1970-01-01 | 2035-12-31 | `XNZE` |
+
+Coverage is clipped to the range where the source has recorded data. That
+range is bounded by 1970 and 2035, by the exchange's first trading day, by
+exchange_calendars' own bounds for that market, and by the years the source
+has a holiday list for. Several Asian calendars end in 2026 because their
+holiday lists are published year by year. Regenerating after an upstream
+release extends them.
+
+Accuracy follows pandas_market_calendars and exchange_calendars. For the
+historically tricky NYSE dates, the spot-check table in `xnys_test.go` cites a
+public primary source for each one.
+
+## Generated data
+
+`data/*.json` and `exchanges_gen.go` are generated by `gen/generate.py` and
+committed. Each JSON file holds the regular-hours periods, holidays by year,
+special sessions (early closes, late opens, unusual hours) and a SHA-256 digest
+of the full schedule.
+
+```bash
+# Regenerate (uses the pinned pandas_market_calendars from gen/uv.lock)
+uv run --locked --project gen gen/generate.py
+
+# Fail if the committed data differs from a fresh generation
+uv run --locked --project gen gen/generate.py --check
+```
+
+`go test ./...` checks three things:
+
+- every calendar rebuilds the generator's schedule digest exactly (every
+  session, open, close and break);
+- regenerating reproduces the committed files byte for byte (this needs `uv`
+  and is skipped in `-short` mode or without it);
+- no query panics for any date.
+
+### Overrides
+
+`overrides.toml` holds corrections and additions on top of
+pandas_market_calendars. Every entry needs a `reason` and a public primary
+`source`. The generator rejects entries the source already agrees with, so
+stale corrections do not linger. There are none today.
+
+## Credits and licences
+
+- [scmhub/calendar](https://github.com/scmhub/calendar) by Philippe Chavanne,
+  MIT. This repository is a fork of it and keeps its [LICENCE](LICENCE).
+- [pandas_market_calendars](https://github.com/rsheftel/pandas_market_calendars),
+  MIT. The source of the generated data.
+- [exchange_calendars](https://github.com/gerrymanoim/exchange_calendars),
+  Apache-2.0, wrapped by pandas_market_calendars for most non-US exchanges.
+
+See [NOTICE](NOTICE) for details.

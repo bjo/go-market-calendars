@@ -1,0 +1,26 @@
+go-market-calendars
+
+This project is a fork of scmhub/calendar
+  https://github.com/scmhub/calendar
+  Copyright (c) 2025 SCM
+  Licensed under the MIT License; see LICENCE.
+
+Changes from scmhub/calendar: the hand-written holiday rule engine was replaced
+by tables generated from pandas_market_calendars; calendars cover a fixed date
+range instead of a rolling +/-5 year window; and out-of-range dates no longer
+panic. The module path is github.com/bjo/go-market-calendars.
+
+The files in data/ and exchanges_gen.go are generated from:
+
+pandas_market_calendars
+  https://github.com/rsheftel/pandas_market_calendars
+  Licensed under the MIT License.
+
+exchange_calendars (via pandas_market_calendars)
+  https://github.com/gerrymanoim/exchange_calendars
+  Licensed under the Apache License, Version 2.0.
+  https://www.apache.org/licenses/LICENSE-2.0
+
+The generated tables are factual schedule data (dates and trading hours)
+derived from these projects. Their copyright notices and licences are
+reproduced here as required.
