@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pandas-market-calendars", specifier = "==5.5.0" }]
+requires-dist = [{ name = "pandas-market-calendars", specifier = ">=5.5.0" }]
 
 [[package]]
 name = "korean-lunar-calendar"

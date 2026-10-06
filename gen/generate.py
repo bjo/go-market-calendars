@@ -438,21 +438,22 @@ def build(ex: Exchange, overrides: list[dict]) -> dict:
     return out
 
 
-def check_round_trip(data: dict, rows: list[tuple[dt.date, dict[str, int | None]]]) -> None:
-    """Rebuild the schedule from the compact form; it must match exactly."""
+def parse_dur(s: str) -> int:
+    """Inverse of fmt_dur: a Go duration string to seconds."""
+    sign = -1 if s.startswith("-") else 1
+    s = s.lstrip("-")
+    total, num = 0, ""
+    for ch in s:
+        if ch.isdigit():
+            num += ch
+        else:
+            total += int(num) * {"h": 3600, "m": 60, "s": 1}[ch]
+            num = ""
+    return sign * total
 
-    def parse_dur(s: str) -> int:
-        sign = -1 if s.startswith("-") else 1
-        s = s.lstrip("-")
-        total, num = 0, ""
-        for ch in s:
-            if ch.isdigit():
-                num += ch
-            else:
-                total += int(num) * {"h": 3600, "m": 60, "s": 1}[ch]
-                num = ""
-        return sign * total
 
+def rebuild_schedule(data: dict) -> list[tuple[dt.date, dict[str, int | None]]]:
+    """The full session schedule encoded by one data/<code>.json document."""
     periods = []
     for r in data["regular"]:
         periods.append((dt.date.fromisoformat(r["from"]), {f: parse_dur(r[f]) if f in r else None for f in TIME_FIELDS}))
@@ -477,7 +478,12 @@ def check_round_trip(data: dict, rows: list[tuple[dt.date, dict[str, int | None]
                 times[k] = None if v == "-" else parse_dur(v)
             rebuilt.append((day, times))
         day += dt.timedelta(days=1)
-    if rebuilt != rows:
+    return rebuilt
+
+
+def check_round_trip(data: dict, rows: list[tuple[dt.date, dict[str, int | None]]]) -> None:
+    """Rebuild the schedule from the compact form; it must match exactly."""
+    if rebuild_schedule(data) != rows:
         raise SystemExit(f"{data['code']}: compact form does not rebuild the source schedule")
 
 
