@@ -102,9 +102,13 @@ func TestSetAdjustmentsRejectsBadInput(t *testing.T) {
 	}
 	for name, adj := range cases {
 		t.Run(name, func(t *testing.T) {
+			assert.Error(t, CheckAdjustments("xnys", adj))
 			assert.Error(t, SetAdjustments("xnys", adj))
 		})
 	}
+	assert.NoError(t, CheckAdjustments("xnys", []Adjustment{session}))
+	assert.Empty(t, Adjustments("xnys"), "checking installs nothing")
+	assert.Error(t, CheckAdjustments("nope", nil))
 	err := SetAdjustments("xnys", cases["out of range"])
 	assert.True(t, errors.Is(err, ErrOutOfRange))
 	assert.Error(t, SetAdjustments("nope", nil))

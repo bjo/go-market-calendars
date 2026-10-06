@@ -58,6 +58,19 @@ func SetAdjustments(code string, adjustments []Adjustment) error {
 	return nil
 }
 
+// CheckAdjustments reports whether SetAdjustments would accept adjustments
+// for code, without installing them.
+func CheckAdjustments(code string, adjustments []Adjustment) error {
+	c := GetCalendar(code)
+	if c == nil {
+		return fmt.Errorf("calendar %q: unknown", code)
+	}
+	if _, err := c.d.buildAdjusted(adjustments); err != nil {
+		return fmt.Errorf("calendar %q: %w", c.d.code, err)
+	}
+	return nil
+}
+
 // Adjustments returns the runtime adjustments installed for code, sorted by
 // date.
 func Adjustments(code string) []Adjustment {
