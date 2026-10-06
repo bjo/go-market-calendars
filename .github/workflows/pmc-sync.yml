@@ -1,0 +1,92 @@
+name: Sync pandas_market_calendars
+
+# Weekly: upgrade pandas_market_calendars and exchange_calendars to their
+# latest PyPI releases, regenerate the data, and open a pull request with a
+# report of every changed trading day when anything changed.
+
+on:
+  schedule:
+    - cron: "17 7 * * 1" # Mondays 07:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write # push the sync branch
+  pull-requests: write # open the pull request
+  actions: write # start CI on the sync branch
+
+concurrency:
+  group: pmc-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Upgrade upstream calendars to their latest releases
+        working-directory: gen
+        run: uv lock --upgrade-package pandas-market-calendars --upgrade-package exchange-calendars
+
+      - name: Regenerate
+        run: uv run --locked --project gen gen/generate.py
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No upstream release changed the data."
+            exit 0
+          fi
+          versions=$(uv run --locked --project gen python -c 'import importlib.metadata as m; print("pmc-" + m.version("pandas_market_calendars") + "-xcals-" + m.version("exchange_calendars"))')
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "versions=$versions" >> "$GITHUB_OUTPUT"
+          echo "branch=sync/$versions" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        id: test
+        if: steps.changes.outputs.changed == 'true'
+        continue-on-error: true
+        run: go test ./...
+
+      - name: Open the pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          BRANCH: ${{ steps.changes.outputs.branch }}
+          VERSIONS: ${{ steps.changes.outputs.versions }}
+          TESTS: ${{ steps.test.outcome }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            echo "$BRANCH already exists; its pull request is open or was handled."
+            exit 0
+          fi
+          {
+            echo "Automated weekly sync: upstream released new calendar data."
+            echo
+            if [ "$TESTS" = "success" ]; then
+              echo "Tests passed in the sync job."
+            else
+              echo "**Tests failed in the sync job.** An upstream change may contradict a spot check or an override; investigate before merging."
+            fi
+            echo
+            uv run --locked --project gen gen/diff.py --base HEAD
+            echo
+            echo "After merging, tag a release so dependants can pick it up."
+          } > "$RUNNER_TEMP/body.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add gen/uv.lock data exchanges_gen.go
+          git commit -qm "Sync upstream calendars ($VERSIONS)"
+          git push origin "$BRANCH"
+          gh pr create --base main --head "$BRANCH" --title "Sync upstream calendars ($VERSIONS)" --body-file "$RUNNER_TEMP/body.md"
+          # Pull requests opened with the workflow token do not trigger
+          # workflows, so start CI explicitly; branch protection needs it.
+          gh workflow run CI.yml --ref "$BRANCH"

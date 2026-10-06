@@ -5,6 +5,9 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # The weekly sync starts CI on its branch (workflow-token pull requests
+  # don't trigger workflows on their own).
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -23,3 +26,5 @@ jobs:
         run: go vet ./...
       - name: Test (includes regeneration drift check against pandas_market_calendars)
         run: go test -race ./...
+      - name: Diff report runs
+        run: uv run --locked --project gen gen/diff.py
