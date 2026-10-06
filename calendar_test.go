@@ -1,258 +1,167 @@
 package calendar
 
 import (
-	"fmt"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestLocations(t *testing.T) {
-	assert := assert.New(t)
-	assert.Equal("America/Mexico_City", Mexico.String())
-	assert.Equal("America/Chicago", Chicago.String())
-	assert.Equal("America/Toronto", Toronto.String())
-	assert.Equal("America/New_York", NewYork.String())
-	assert.Equal("America/Sao_Paulo", SaoPaulo.String())
-	assert.Equal("Europe/London", London.String())
-	assert.Equal("Europe/Lisbon", Lisbon.String())
-	assert.Equal("Europe/Madrid", Madrid.String())
-	assert.Equal("Europe/Amsterdam", Amsterdam.String())
-	assert.Equal("Europe/Brussels", Brussels.String())
-	assert.Equal("Europe/Paris", Paris.String())
-	assert.Equal("Europe/Zurich", Zurich.String())
-	assert.Equal("Europe/Rome", Milan.String())
-	assert.Equal("Europe/Berlin", Franckfurt.String())
-	assert.Equal("Europe/Moscow", Moscow.String())
-	assert.Equal("Africa/Johannesburg", Johannesburg.String())
-	assert.Equal("Asia/Dubai", Dubai.String())
-	assert.Equal("Asia/Kolkata", Mumbai.String())
-	assert.Equal("Asia/Singapore", Singapore.String())
-	assert.Equal("Asia/Bangkok", Bangkok.String())
-	assert.Equal("Asia/Hong_Kong", HongKong.String())
-	assert.Equal("Asia/Hong_Kong", Shenzhen.String())
-	assert.Equal("Asia/Shanghai", Shanghai.String())
-	assert.Equal("Asia/Seoul", Seoul.String())
-	assert.Equal("Asia/Tokyo", Tokyo.String())
-	assert.Equal("Australia/Sydney", Sydney.String())
+func ny(y int, m time.Month, d, h, min int) time.Time {
+	return time.Date(y, m, d, h, min, 0, 0, NewYork)
 }
 
-func TestNewCalendar(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago)
-	assert.Equal("Calendar", c.Name)
-	assert.Equal(time.Now().Year()-YearsPast, c.startYear)
-	assert.Equal(time.Now().Year()+YearsAhead, c.endYear)
-	c = NewCalendar("Calendar", Chicago, 2000)
-	assert.Equal(2000, c.startYear)
-	assert.Equal(2000+YearsAhead+YearsPast, c.endYear)
-	c = NewCalendar("Calendar", Chicago, 2010, 2030)
-	assert.Equal(2010, c.startYear)
-	assert.Equal(2030, c.endYear)
-	c = NewCalendar("Calendar", Chicago, 2020, 15)
-	assert.Equal(2020, c.startYear)
-	assert.Equal(2035, c.endYear)
-}
-
-func TestCalendarSessions(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago)
-	assert.Equal(&Session{}, c.Session())
-	assert.True(c.Session().IsZero())
-	earlyOpen := 4 * time.Hour
-	open := 9 * time.Hour
-	close := 15 * time.Hour
-	lateClose := 20 * time.Hour
-	session := &Session{
-		EarlyOpen: earlyOpen,
-		Open:      open,
-		Close:     close,
-		LateClose: lateClose,
+// No query may panic, whatever the date: out-of-range dates give false or the
+// zero time, and Check explains why.
+func TestOutOfRangeNeverPanics(t *testing.T) {
+	dates := []time.Time{
+		{},
+		time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(1900, 1, 2, 12, 0, 0, 0, time.UTC),
+		time.Date(1969, 12, 31, 12, 0, 0, 0, time.UTC),
+		time.Date(2036, 1, 2, 12, 0, 0, 0, time.UTC),
+		time.Date(9999, 12, 31, 23, 59, 59, 0, time.UTC),
 	}
-	c.SetSession(session)
-	assert.Equal(earlyOpen, c.Session().EarlyOpen)
-	assert.Equal(open, c.Session().Open)
-	assert.Equal(time.Duration(0), c.Session().BreakStart)
-	assert.Equal(time.Duration(0), c.Session().BreakStop)
-	assert.Equal(close, c.Session().Close)
-	assert.Equal(lateClose, c.Session().LateClose)
-	assert.False(session.HasBreak())
-	breakStart := 11*time.Hour + 30*time.Minute
-	breakStop := 12*time.Hour + 30*time.Minute
-	session.BreakStart = breakStart
-	session.BreakStop = breakStop
-	c.SetSession(session)
-	assert.Equal(open, c.Session().Open)
-	assert.Equal(breakStart, c.Session().BreakStart)
-	assert.Equal(breakStop, c.Session().BreakStop)
-	assert.True(session.HasBreak())
-	earlyClose := 13 * time.Hour
-	session.EarlyClose = earlyClose
-	c.SetSession(session)
+	for _, code := range Names() {
+		c := GetCalendar(code)
+		for _, d := range dates {
+			require.NotPanics(t, func() {
+				assert.False(t, c.InRange(d), "%s %s", code, d)
+				assert.ErrorIs(t, c.Check(d), ErrOutOfRange)
+				assert.False(t, c.IsBusinessDay(d))
+				assert.False(t, c.IsHoliday(d))
+				assert.False(t, c.IsEarlyClose(d))
+				assert.False(t, c.IsLateOpen(d))
+				assert.False(t, c.IsOpen(d))
+				_, ok := c.SessionHours(d)
+				assert.False(t, ok)
+				c.NextBusinessDay(d)
+				c.PreviousBusinessDay(d)
+				c.NextHoliday(d)
+				c.NextClose(d)
+				c.Holidays(d, d.AddDate(0, 0, 10))
+			}, "%s %s", code, d)
+		}
+	}
 }
 
-func TestCalendarYears(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago)
+func TestOldAndFutureDatesInRange(t *testing.T) {
+	c := XNYS()
+	for _, d := range []time.Time{ny(1970, 1, 2, 12, 0), ny(1985, 1, 2, 12, 0), ny(2005, 1, 3, 12, 0), ny(2035, 12, 31, 12, 0)} {
+		assert.NoError(t, c.Check(d), d)
+		assert.True(t, c.IsBusinessDay(d), d)
+	}
 	start, end := c.Years()
-	assert.Equal(time.Now().Year()-YearsPast, start)
-	assert.Equal(time.Now().Year()+YearsAhead, end)
-	c = NewCalendar("Calendar", Chicago, time.Now().Year()-5)
-	c.AddHolidays(NewYear)
-	ti, ho := c.NextHoliday(time.Date(time.Now().Year(), 1, 1, 0, 0, 0, 0, Chicago))
-	assert.Equal(time.Date(time.Now().Year()+1, 1, 1, 0, 0, 0, 0, Chicago), ti)
-	assert.Equal(NewYear, ho)
-	c.SetYears(2018, 2020)
-	assert.Equal(2018, c.startYear)
-	assert.Equal(2020, c.endYear)
-	assert.Panics(func() { c.NextHoliday(time.Time{}) })
-
+	assert.Equal(t, 1970, start)
+	assert.Equal(t, 2035, end)
 }
 
-func TestAddHoliday(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2011, 2015)
-	assert.False(c.HasHoliday(NewYear))
-	c.AddHolidays(NewYear)
-	assert.True(c.HasHoliday(NewYear))
-	assert.Equal(1, len(c.h))
-	assert.Equal(NewYear, c.h[0])
-	assert.Equal(3, len(c.hmap))
-	assert.Equal(NewYear, c.hmap[time.Date(2015, 1, 1, 0, 0, 0, 0, Chicago).Unix()])
-	for i := 2; i < len(c.hmap); i++ {
-		assert.True(c.IsHoliday(time.Date(2011+i, 1, 1, 0, 0, 0, 0, Chicago)))
-	}
-	c = NewCalendar("Calendar", Chicago, 2013)
-	c.AddHolidays(NewYear) // 1/1/2013 is a tuesday
-	assert.True(c.IsHoliday(time.Date(2013, 1, 1, 0, 0, 0, 0, Chicago)))
-	assert.False(c.IsHoliday(time.Date(2013, 1, 2, 0, 0, 0, 0, Chicago)))
-	assert.True(c.IsHoliday(time.Date(2013, 1, 1, 15, 30, 0, 0, Chicago)))
-	assert.False(c.IsHoliday(time.Date(2013, 1, 2, 15, 30, 0, 0, Chicago)))
-}
-func TestAddEarlyClosingDays(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2013)
-	c.AddEarlyClosingDays(NewYear) // 1/1/2013 is a tuesday
-	assert.False(c.IsHoliday(time.Date(2013, 1, 1, 0, 0, 0, 0, Chicago)))
-	assert.True(c.IsEarlyClose(time.Date(2013, 1, 1, 0, 0, 0, 0, Chicago)))
+func TestRangeEdges(t *testing.T) {
+	c := XNYS()
+	first, last := c.Range()
+	assert.True(t, c.NextBusinessDay(last).IsZero(), "no session after coverage")
+	assert.True(t, c.PreviousBusinessDay(first).IsZero(), "no session before coverage")
+	assert.Equal(t, ny(1970, 1, 2, 0, 0), c.NextBusinessDay(first.AddDate(0, 0, -1)), "entering from just before the range")
+	err := c.Check(first.AddDate(0, 0, -1))
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrOutOfRange))
+	assert.Contains(t, err.Error(), "1969-12-31")
 }
 
-func TestCalendarBusinessDay(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2013)
-	c.AddHolidays(NewYear) // 1/1/2013 is a tuesday
-	assert.False(c.IsBusinessDay(time.Date(2013, 1, 1, 0, 0, 0, 0, Chicago)))
-	assert.True(c.IsBusinessDay(time.Date(2013, 1, 2, 0, 0, 0, 0, Chicago)))
-	assert.Panics(func() { c.NextBusinessDay(time.Date(2012, 12, 31, 0, 0, 0, 0, Chicago)) })
-	assert.Equal(time.Date(2013, 1, 2, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 1, 0, 0, 0, 0, Chicago)))
-	assert.Equal(time.Date(2013, 1, 3, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 2, 0, 0, 0, 0, Chicago)))
-	assert.Equal(time.Date(2013, 1, 4, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 3, 0, 0, 0, 0, Chicago)))
-	assert.Equal(time.Date(2013, 1, 7, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 4, 0, 0, 0, 0, Chicago)))
-	assert.Equal(time.Date(2013, 1, 7, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 5, 0, 0, 0, 0, Chicago)))
-	assert.Equal(time.Date(2013, 1, 7, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 6, 0, 0, 0, 0, Chicago)))
-	assert.Equal(time.Date(2013, 1, 8, 0, 0, 0, 0, Chicago), c.NextBusinessDay(time.Date(2013, 1, 7, 0, 0, 0, 0, Chicago)))
+func TestBusinessDaysAndHolidays(t *testing.T) {
+	c := XNYS()
+	assert.False(t, c.IsBusinessDay(ny(2025, 12, 25, 0, 0)), "Christmas")
+	assert.True(t, c.IsHoliday(ny(2025, 12, 25, 0, 0)))
+	assert.False(t, c.IsBusinessDay(ny(2025, 12, 27, 0, 0)), "Saturday")
+	assert.False(t, c.IsHoliday(ny(2025, 12, 27, 0, 0)), "weekends are not holidays")
+	assert.True(t, c.IsBusinessDay(ny(2025, 12, 26, 0, 0)))
 
+	// The calendar date is read in t's own location, so a UTC-midnight date
+	// asks about that date, not the New York evening before it.
+	assert.False(t, c.IsBusinessDay(time.Date(2025, 12, 25, 0, 0, 0, 0, time.UTC)))
+	assert.True(t, c.IsBusinessDay(time.Date(2025, 12, 26, 0, 0, 0, 0, time.UTC)))
+
+	ti, h := c.NextHoliday(ny(2025, 12, 1, 0, 0))
+	require.NotNil(t, h)
+	assert.Equal(t, ny(2025, 12, 25, 0, 0), ti)
+	assert.Equal(t, ti, h.Date)
+
+	hs := c.Holidays(ny(2025, 12, 1, 0, 0), ny(2026, 1, 1, 0, 0))
+	require.Len(t, hs, 2)
+	assert.Equal(t, ny(2026, 1, 1, 0, 0), hs[1].Date)
 }
 
-func TestNextBusinessDay(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2014, 2015)
-	c.AddHolidays(NewYear)
-	assert.Panics(func() { c.NextHoliday(time.Date(2013, 1, 1, 0, 0, 0, 0, Chicago)) })
-	ti, ho := c.NextHoliday(time.Date(2014, 1, 1, 0, 0, 0, 0, Chicago))
-	assert.Equal(time.Date(2015, 1, 1, 0, 0, 0, 0, Chicago), ti)
-	assert.Equal(NewYear, ho)
-	ti, ho = c.NextHoliday(time.Date(2014, 2, 1, 0, 0, 0, 0, Chicago))
-	assert.Equal(time.Date(2015, 1, 1, 0, 0, 0, 0, Chicago), ti)
-	assert.Equal(NewYear, ho)
-	ti, ho = c.NextHoliday(time.Date(2015, 2, 1, 0, 0, 0, 0, Chicago))
-	assert.Equal(time.Time{}, ti)
-	assert.Nil(ho)
-	assert.Panics(func() { c.NextHoliday(time.Date(2016, 1, 1, 0, 0, 0, 0, Chicago)) })
+func TestNextBusinessDayKeepsClockAndLocation(t *testing.T) {
+	c := XNYS()
+	assert.Equal(t, ny(2025, 12, 26, 15, 30), c.NextBusinessDay(ny(2025, 12, 24, 15, 30)))
+	assert.Equal(t, ny(2025, 12, 29, 15, 30), c.NextBusinessDay(ny(2025, 12, 26, 15, 30)))
+	assert.Equal(t, ny(2025, 12, 24, 9, 0), c.PreviousBusinessDay(ny(2025, 12, 26, 9, 0)))
+	utc := time.Date(2025, 12, 24, 0, 0, 0, 0, time.UTC)
+	assert.Equal(t, time.Date(2025, 12, 26, 0, 0, 0, 0, time.UTC), c.NextBusinessDay(utc))
 }
+
+func TestEarlyCloseAndNextClose(t *testing.T) {
+	c := XNYS()
+	assert.True(t, c.IsEarlyClose(ny(2025, 11, 28, 0, 0)), "day after Thanksgiving")
+	assert.False(t, c.IsEarlyClose(ny(2025, 11, 26, 0, 0)))
+	assert.Equal(t, ny(2025, 11, 28, 13, 0), c.NextClose(ny(2025, 11, 28, 8, 0)))
+	assert.Equal(t, ny(2025, 11, 26, 16, 0), c.NextClose(ny(2025, 11, 26, 8, 0)))
+	assert.Equal(t, ny(2025, 11, 28, 13, 0), c.NextClose(ny(2025, 11, 27, 8, 0)), "holiday rolls to the next session")
+	// Historical hours come from the data: the close was 15:30 before 1974.
+	assert.Equal(t, ny(1972, 6, 1, 15, 30), c.NextClose(ny(1972, 6, 1, 12, 0)))
+}
+
 func TestIsOpen(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2014, 2015)
-	c.AddHolidays(NewYear)
-	assert.PanicsWithError(fmt.Sprint(errNoSession), func() { c.IsOpen(time.Date(2014, 12, 31, 10, 30, 0, 0, Chicago)) })
-	c.SetSession(&Session{
-		EarlyOpen:  7 * time.Hour,
-		Open:       9*time.Hour + 30*time.Minute,
-		Close:      16 * time.Hour,
-		EarlyClose: 13 * time.Hour,
-		LateClose:  20 * time.Hour,
-	})
-	assert.True(c.IsOpen(time.Date(2014, 12, 31, 10, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 1, 10, 30, 0, 0, Chicago)))
-	assert.True(c.IsOpen(time.Date(2015, 1, 2, 10, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 3, 10, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 4, 10, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 2, 9, 0, 0, 0, Chicago)))
-	assert.True(c.IsOpen(time.Date(2015, 1, 2, 10, 30, 0, 0, Chicago)))
-	assert.True(c.IsOpen(time.Date(2015, 1, 2, 12, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 2, 16, 30, 0, 0, Chicago)))
-	c.SetSession(&Session{
-		EarlyOpen:  7 * time.Hour,
-		Open:       9*time.Hour + 30*time.Minute,
-		Close:      16 * time.Hour,
-		BreakStart: 11 * time.Hour,
-		BreakStop:  13 * time.Hour,
-		EarlyClose: 13 * time.Hour,
-		LateClose:  20 * time.Hour,
-	})
-	assert.False(c.IsOpen(time.Date(2015, 1, 2, 9, 0, 0, 0, Chicago)))
-	assert.True(c.IsOpen(time.Date(2015, 1, 2, 10, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 2, 12, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 2, 16, 30, 0, 0, Chicago)))
-	c.AddEarlyClosingDays(Epiphany)
-	assert.True(c.IsOpen(time.Date(2015, 1, 6, 10, 30, 0, 0, Chicago)))
-	assert.False(c.IsOpen(time.Date(2015, 1, 6, 15, 30, 0, 0, Chicago)))
+	c := XNYS()
+	assert.False(t, c.IsOpen(ny(2025, 11, 26, 9, 29)))
+	assert.True(t, c.IsOpen(ny(2025, 11, 26, 9, 30)))
+	assert.True(t, c.IsOpen(ny(2025, 11, 26, 16, 0)))
+	assert.False(t, c.IsOpen(ny(2025, 11, 26, 16, 1)))
+	assert.False(t, c.IsOpen(ny(2025, 11, 28, 13, 30)), "early close")
+	assert.False(t, c.IsOpen(ny(2025, 11, 27, 12, 0)), "holiday")
+	assert.True(t, c.IsOpen(time.Date(2025, 11, 26, 15, 0, 0, 0, time.UTC)), "instants convert to the exchange's zone")
+
+	hk := XHKG()
+	assert.True(t, hk.IsOpen(time.Date(2025, 11, 26, 11, 0, 0, 0, HongKong)))
+	assert.False(t, hk.IsOpen(time.Date(2025, 11, 26, 12, 30, 0, 0, HongKong)), "lunch break")
+	assert.True(t, hk.IsOpen(time.Date(2025, 11, 26, 13, 30, 0, 0, HongKong)))
 }
 
-func TestTimestamps(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2010, 2012)
-	c.AddHolidays(NewYear, Epiphany)
-	var prev int64
-	for _, t := range c.hts {
-		assert.True(prev < t)
-		assert.True(c.IsHoliday(BOD(time.Unix(t, 0).In(c.Loc))))
-	}
-}
-func TestNextClose(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2014, 2015)
-	c.AddHolidays(NewYear)
-	c.addHoliday(ChristmasDay)
-	c.addEarlyClosingDay(ChristmasEve)
-	assert.PanicsWithError(errNoSession.Error(), func() { c.NextClose(time.Date(2014, 12, 31, 10, 30, 0, 0, Chicago)) })
-	c.SetSession(&Session{
-		Open:  9 * time.Hour,
-		Close: 16 * time.Hour,
-	})
-	assert.Equal(time.Date(2014, 12, 31, 16, 00, 0, 0, Chicago), c.NextClose(time.Date(2014, 12, 31, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 1, 2, 16, 00, 0, 0, Chicago), c.NextClose(time.Date(2015, 1, 1, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 1, 2, 16, 00, 0, 0, Chicago), c.NextClose(time.Date(2015, 1, 2, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 1, 5, 16, 00, 0, 0, Chicago), c.NextClose(time.Date(2015, 1, 3, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 1, 5, 16, 00, 0, 0, Chicago), c.NextClose(time.Date(2015, 1, 4, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 1, 5, 16, 00, 0, 0, Chicago), c.NextClose(time.Date(2015, 1, 5, 10, 30, 0, 0, Chicago)))
-	assert.PanicsWithError(errNoEarlyClose.Error(), func() { c.NextClose(time.Date(2015, 12, 24, 10, 30, 0, 0, Chicago)) })
-	c.SetSession(&Session{
-		Open:       9 * time.Hour,
-		Close:      16 * time.Hour,
-		EarlyClose: 13 * time.Hour,
-	})
-	assert.Equal(time.Date(2015, 12, 24, 13, 0, 0, 0, Chicago), c.NextClose(time.Date(2015, 12, 24, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 12, 28, 16, 0, 0, 0, Chicago), c.NextClose(time.Date(2015, 12, 25, 10, 30, 0, 0, Chicago)))
-	assert.Equal(time.Date(2015, 12, 28, 16, 0, 0, 0, Chicago), c.NextClose(time.Date(2015, 12, 28, 10, 30, 0, 0, Chicago)))
+func TestSessionHours(t *testing.T) {
+	c := XNYS()
+	h, ok := c.SessionHours(ny(2025, 7, 3, 0, 0))
+	require.True(t, ok)
+	assert.Equal(t, ny(2025, 7, 3, 9, 30), h.Open)
+	assert.Equal(t, ny(2025, 7, 3, 13, 0), h.Close)
+	assert.True(t, h.BreakStart.IsZero())
+	_, ok = c.SessionHours(ny(2025, 7, 4, 0, 0))
+	assert.False(t, ok)
 }
 
-func TestCalendarString(t *testing.T) {
-	assert := assert.New(t)
-	c := NewCalendar("Calendar", Chicago, 2011, 2015)
-	assert.Equal("Calendar Calendar:\n", c.String())
-	c.AddHolidays(NewYear)
-	c.AddEarlyClosingDays(BeforeIndependenceDay)
-	assert.Equal("Calendar Calendar:\n\t2012-Jul-03 Tue ec Day before Independence Day\n\t2013-Jan-01 Tue    New Year's Day\n\t2013-Jul-03 Wed ec Day before Independence Day\n\t2014-Jan-01 Wed    New Year's Day\n\t2014-Jul-03 Thu ec Day before Independence Day\n\t2015-Jan-01 Thu    New Year's Day\n\t2015-Jul-03 Fri ec Day before Independence Day\n", c.String())
+func TestSession(t *testing.T) {
+	s := XNYS().Session()
+	assert.Equal(t, 9*time.Hour+30*time.Minute, s.Open)
+	assert.Equal(t, 16*time.Hour, s.Close)
+	assert.Equal(t, 13*time.Hour, s.EarlyClose)
+	assert.Equal(t, 4*time.Hour, s.EarlyOpen)
+	assert.Equal(t, 20*time.Hour, s.LateClose)
+	assert.False(t, s.HasBreak())
+
+	hk := XHKG().Session()
+	assert.True(t, hk.HasBreak())
+
+	c := XNYS()
+	c.SetSession(&Session{Open: time.Hour})
+	assert.Equal(t, time.Hour, c.Session().Open)
+	assert.Equal(t, 9*time.Hour+30*time.Minute, XNYS().Session().Open, "each Calendar has its own Session")
+}
+
+func TestString(t *testing.T) {
+	s := XNYS().String()
+	assert.True(t, strings.HasPrefix(s, "Calendar New York Stock Exchange:\n"))
+	assert.Contains(t, s, "2025-Dec-25 Thu    Christmas")
+	assert.Contains(t, s, "2025-Nov-28 Fri ec Early close")
 }

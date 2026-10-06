@@ -3,10 +3,13 @@ package calendar
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"strings"
 	"time"
 )
 
+// YearsAhead and YearsPast described scmhub/calendar's default rolling window.
+// Calendars here cover a fixed range set by the generated data instead; the
+// constants remain for source compatibility.
 const YearsAhead = 5
 const YearsPast = 5
 
@@ -40,7 +43,12 @@ var (
 	Sydney, _       = time.LoadLocation("Australia/Sydney")
 )
 
-// Session defines the operating hours and breaks for the calendar.
+// ErrOutOfRange is returned by Check for a date outside a calendar's coverage.
+var ErrOutOfRange = errors.New("date outside calendar coverage")
+
+// Session defines the regular operating hours of a calendar, as offsets from
+// local midnight. EarlyOpen and LateClose are the extended-hours bounds where
+// the source data defines them.
 type Session struct {
 	EarlyOpen  time.Duration
 	Open       time.Duration
@@ -61,262 +69,233 @@ func (s Session) IsZero() bool {
 	return s == Session{}
 }
 
-// Calendar represents a calendar with holidays and sessions.
+// SessionHours are the actual trading hours of one session.
+// BreakStart and BreakEnd are zero when the session has no break.
+type SessionHours struct {
+	Open       time.Time
+	BreakStart time.Time
+	BreakEnd   time.Time
+	Close      time.Time
+}
+
+// Holiday is a weekday on which the exchange is closed.
+type Holiday struct {
+	Name string    // empty when the source does not name the closure
+	Date time.Time // midnight in the calendar's location
+}
+
+// Calendar is an exchange calendar backed by generated data.
+//
+// Day-level queries (IsBusinessDay, IsHoliday, IsEarlyClose, NextBusinessDay,
+// NextClose, ...) use the calendar date of t as written, in t's own location:
+// 2025-01-09 00:00 UTC asks about 9 January. Instant queries (IsOpen) convert t
+// to the calendar's location first.
+//
+// Dates outside Range never panic: boolean queries return false, Check
+// reports ErrOutOfRange, and the Next/Previous queries search from the
+// nearest covered date, returning the zero time when the coverage range has
+// no answer in that direction.
 type Calendar struct {
-	Name      string
-	Loc       *time.Location     // NewYork or time.LoadLocation("America/New_York")
-	startYear int                // default is time.Now().Year() - YearsPast
-	endYear   int                // default is time.Now().Year() + YearsAhead
-	session   *Session           // Session
-	h         []*Holiday         // Holidays list
-	hts       []int64            // Sorted holidays timestamps (Unix time)
-	hmap      map[int64]*Holiday // {timestamps: *Holiday} map
-	ects      []int64            // Sorted early close timestamps (Unix time)
-	ecmap     map[int64]*Holiday // {timestamps: *Holiday} map for early close days
+	Name    string
+	Loc     *time.Location
+	d       *calData
+	session *Session
 }
 
-func newCalendar(name string, loc *time.Location, start, end int) *Calendar {
-	return &Calendar{
-		Name:      name,
-		Loc:       loc,
-		startYear: start,
-		endYear:   end,
-		session:   &Session{},
-		hmap:      make(map[int64]*Holiday),
-		ecmap:     make(map[int64]*Holiday),
-	}
-}
+// Code returns the calendar's registry code, e.g. "xnys".
+func (c *Calendar) Code() string { return c.d.code }
 
-// NewCalendar creates a new Calendar instance based on the provided parameters.
-// It accepts a name for the calendar, a location, and an optional list of years.
-// If no years are specified, it defaults to a range of 5 years before and after the current year.
-// If one year is provided, it sets that year as the start and calculates the end as 10 years later.
-// If two years are provided, it calculates the end year based on the first year and checks if the second is less than 100.
-func NewCalendar(name string, loc *time.Location, years ...int) *Calendar {
-	var start, end int
-	switch len(years) {
-	default:
-		start = time.Now().Year() - YearsPast
-		end = time.Now().Year() + YearsAhead
-	case 1:
-		start = years[0]
-		end = years[0] + YearsPast + YearsAhead
-	case 2:
-		start = years[0]
-		if years[1] < 100 {
-			end = years[0] + years[1]
-		} else {
-			end = years[1]
-		}
-	}
-	return newCalendar(name, loc, start, end)
-}
+// Source describes where the calendar data was generated from.
+func (c *Calendar) Source() string { return c.d.source }
 
-func (c *Calendar) reset() {
-	c.hts = []int64{}
-	c.hmap = make(map[int64]*Holiday)
-	c.ects = []int64{}
-	c.ecmap = make(map[int64]*Holiday)
-}
-
-// Session returns the current session details.
+// Session returns the regular session in force today (or at the nearest end
+// of the coverage range).
 func (c *Calendar) Session() *Session {
 	return c.session
 }
 
-// SetSession updates the session details for the calendar.
+// SetSession replaces the value returned by Session. It does not change the
+// generated session hours used by IsOpen, NextClose and SessionHours.
 func (c *Calendar) SetSession(s *Session) {
 	c.session = s
 }
 
-// Years returns the start and end years of the calendar.
+// Years returns the first and last year of the calendar's coverage.
 func (c *Calendar) Years() (start, end int) {
-	return c.startYear, c.endYear
+	return c.d.first.year(), c.d.last.year()
 }
 
-// SetYears updates the start and end years for the calendar and resets holidays.
-func (c *Calendar) SetYears(start, end int) {
-	c.startYear, c.endYear = start, end
-	c.reset()
+// Range returns the first and last covered dates, at midnight in c.Loc.
+func (c *Calendar) Range() (first, last time.Time) {
+	return c.d.first.midnight(c.Loc), c.d.last.midnight(c.Loc)
+}
 
-	for _, h := range c.h {
-		c.addHoliday(h)
+// InRange reports whether the calendar date of t is covered.
+func (c *Calendar) InRange(t time.Time) bool {
+	k := dayOf(t)
+	return k >= c.d.first && k <= c.d.last
+}
+
+// Check returns an error wrapping ErrOutOfRange if the calendar date of t is
+// not covered, and nil otherwise.
+func (c *Calendar) Check(t time.Time) error {
+	if c.InRange(t) {
+		return nil
 	}
+	return fmt.Errorf("%s: %s: %w (%s to %s)", c.d.code, t.Format(time.DateOnly), ErrOutOfRange,
+		c.d.first.String(), c.d.last.String())
 }
 
-func (c *Calendar) addHoliday(h *Holiday) {
-	for y := c.startYear; y <= c.endYear; y++ {
-		t := h.Calc(y, c.Loc)
-		if !t.IsZero() {
-			c.hmap[t.Unix()] = h
-			c.hts = append(c.hts, t.Unix())
+// IsBusinessDay reports whether the calendar date of t is a trading session.
+func (c *Calendar) IsBusinessDay(t time.Time) bool {
+	_, ok := c.d.session(dayOf(t))
+	return ok
+}
+
+// IsHoliday reports whether the calendar date of t is a weekday on which the
+// exchange is closed. Weekends are not holidays.
+func (c *Calendar) IsHoliday(t time.Time) bool {
+	_, ok := c.d.holidays[dayOf(t)]
+	return ok
+}
+
+// IsEarlyClose reports whether the session on the calendar date of t closes
+// before the regular close.
+func (c *Calendar) IsEarlyClose(t time.Time) bool {
+	k := dayOf(t)
+	s, ok := c.d.session(k)
+	return ok && s.close < c.d.regular(k).close
+}
+
+// IsLateOpen reports whether the session on the calendar date of t opens after
+// the regular open.
+func (c *Calendar) IsLateOpen(t time.Time) bool {
+	k := dayOf(t)
+	s, ok := c.d.session(k)
+	return ok && s.open > c.d.regular(k).open
+}
+
+// IsOpen reports whether the exchange is trading at instant t. Bounds are
+// inclusive, and a break excludes its interior.
+func (c *Calendar) IsOpen(t time.Time) bool {
+	lt := t.In(c.Loc)
+	today := dayOf(lt)
+	// A session can open on the previous evening or close after midnight.
+	for _, k := range []day{today - 1, today, today + 1} {
+		s, ok := c.d.session(k)
+		if !ok {
+			continue
 		}
-	}
-	sort.Slice(c.hts, func(i, j int) bool {
-		return c.hts[i] < c.hts[j]
-	})
-}
-
-// AddHolidays appends holidays to the calendar and adds them to the holiday list.
-func (c *Calendar) AddHolidays(h ...*Holiday) {
-	for _, ho := range h {
-		c.h = append(c.h, ho)
-		c.addHoliday(ho)
-	}
-
-}
-
-func (c *Calendar) addEarlyClosingDay(h *Holiday) {
-	for y := c.startYear; y <= c.endYear; y++ {
-		t := h.Calc(y, c.Loc)
-		if !t.IsZero() {
-			c.ecmap[t.Unix()] = h
-			c.ects = append(c.ects, t.Unix())
+		h := s.hours(k, c.Loc)
+		if lt.Before(h.Open) || lt.After(h.Close) {
+			continue
 		}
-	}
-	sort.Slice(c.ects, func(i, j int) bool {
-		return c.ects[i] < c.ects[j]
-	})
-}
-
-// AddEarlyClosingDays appends early closing holidays to the calendar.
-func (c *Calendar) AddEarlyClosingDays(h ...*Holiday) {
-	for _, ho := range h {
-		c.addEarlyClosingDay(ho)
-		c.h = append(c.h, ho)
-	}
-}
-
-// HasHoliday checks if a specific holiday is present in the calendar.
-func (c *Calendar) HasHoliday(h *Holiday) bool {
-	for _, ho := range c.h {
-		if h == ho {
-			return true
+		if s.hasBreak && lt.After(h.BreakStart) && lt.Before(h.BreakEnd) {
+			continue
 		}
+		return true
 	}
 	return false
 }
 
-func (c *Calendar) ensureInRange(t time.Time) {
-	year := t.Year()
-	if year < c.startYear || year > c.endYear {
-		panic(fmt.Sprintf("provided time %v is outside the calendar range (%d - %d)", t, c.startYear, c.endYear))
+// SessionHours returns the trading hours of the session on the calendar date
+// of t. ok is false when that date is not a session.
+func (c *Calendar) SessionHours(t time.Time) (h SessionHours, ok bool) {
+	k := dayOf(t)
+	s, ok := c.d.session(k)
+	if !ok {
+		return SessionHours{}, false
 	}
+	return s.hours(k, c.Loc), true
 }
 
-// IsBusinessDay checks if a specific Tims is a business day for this calendar.
-func (c *Calendar) IsBusinessDay(t time.Time) bool {
-	c.ensureInRange(t)
-	if IsWeekend(t) {
-		return false
-	}
-	if c.IsHoliday(t) {
-		return false
-	}
-	return true
-}
-
-// IsHoliday checks if a specific Tims is a holiday day for this calendar.
-func (c *Calendar) IsHoliday(t time.Time) bool {
-	c.ensureInRange(t)
-	_, ok := c.hmap[BOD(t).Unix()]
-	return ok
-}
-
-// IsHoliday checks if a specific Tims is a early close for this calendar.
-func (c *Calendar) IsEarlyClose(t time.Time) bool {
-	c.ensureInRange(t)
-	_, ok := c.ecmap[BOD(t).Unix()]
-	return ok
-}
-
-// IsOpen checks if a specific Tims is in a business session for this calendar.
-func (c *Calendar) IsOpen(t time.Time) bool {
-	c.ensureInRange(t)
-	if c.session.IsZero() {
-		panic(errNoSession)
-	}
-	if !c.IsBusinessDay(t) {
-		return false
-	}
-	if c.IsEarlyClose(t) && t.After(BOD(t).Add(c.session.EarlyClose)) {
-		return false
-	}
-	if c.session.HasBreak() && t.After(BOD(t).Add(c.session.BreakStart)) && t.Before(BOD(t).Add(c.session.BreakStop)) {
-		return false
-	}
-	if t.Before(BOD(t).Add(c.session.Open)) {
-		return false
-	}
-	if t.After(BOD(t).Add(c.session.Close)) {
-		return false
-	}
-	return true
-}
-
-// NextBusinessDay returns the business day following the provided Time.
+// NextBusinessDay returns the first session after the calendar date of t, at
+// t's clock time and location. A date before the coverage range gets the
+// first covered session; the zero time means there is none.
 func (c *Calendar) NextBusinessDay(t time.Time) time.Time {
-	c.ensureInRange(t)
-	t = t.AddDate(0, 0, 1)
-	for !c.IsBusinessDay(t) {
-		t = t.AddDate(0, 0, 1)
-	}
-	return t
+	return c.stepBusinessDay(t, 1)
 }
 
-// NextHoliday returns the following holiday time and Holiday for the provided Time.
+// PreviousBusinessDay returns the last session before the calendar date of t,
+// at t's clock time and location. A date after the coverage range gets the
+// last covered session; the zero time means there is none.
+func (c *Calendar) PreviousBusinessDay(t time.Time) time.Time {
+	return c.stepBusinessDay(t, -1)
+}
+
+func (c *Calendar) stepBusinessDay(t time.Time, step int) time.Time {
+	from := dayOf(t)
+	k := from
+	// Start the search at the edge of the coverage range.
+	if step > 0 && k < c.d.first-1 {
+		k = c.d.first - 1
+	}
+	if step < 0 && k > c.d.last+1 {
+		k = c.d.last + 1
+	}
+	for k += day(step); k >= c.d.first && k <= c.d.last; k += day(step) {
+		if _, ok := c.d.session(k); ok {
+			return t.AddDate(0, 0, int(k-from))
+		}
+	}
+	return time.Time{}
+}
+
+// NextHoliday returns the first holiday after the calendar date of t. It
+// returns the zero time and nil when there is none within the coverage range.
 func (c *Calendar) NextHoliday(t time.Time) (time.Time, *Holiday) {
-	c.ensureInRange(t)
-	for _, ts := range c.hts {
-		if t.Unix() < ts {
-			return time.Unix(ts, 0).In(c.Loc), c.hmap[ts]
-		}
+	k := dayOf(t)
+	i := c.d.holidayIndex(k + 1)
+	if i == len(c.d.holidayDays) {
+		return time.Time{}, nil
 	}
-	return time.Time{}, nil
+	h := c.holiday(c.d.holidayDays[i])
+	return h.Date, &h
 }
 
-// NextClose return the next closing time
+// Holidays returns the holidays between the calendar dates of start and end,
+// inclusive.
+func (c *Calendar) Holidays(start, end time.Time) []Holiday {
+	var out []Holiday
+	last := dayOf(end)
+	for i := c.d.holidayIndex(dayOf(start)); i < len(c.d.holidayDays) && c.d.holidayDays[i] <= last; i++ {
+		out = append(out, c.holiday(c.d.holidayDays[i]))
+	}
+	return out
+}
+
+func (c *Calendar) holiday(k day) Holiday {
+	return Holiday{Name: c.d.holidays[k], Date: k.midnight(c.Loc)}
+}
+
+// NextClose returns the close of the session on the calendar date of t, or of
+// the next session if that date is not one. It returns the zero time when
+// there is no such session within the coverage range.
 func (c *Calendar) NextClose(t time.Time) time.Time {
-	c.ensureInRange(t)
-	if c.session.IsZero() {
-		panic(errNoSession)
+	k := dayOf(t)
+	if k < c.d.first {
+		k = c.d.first
 	}
-	if c.IsBusinessDay(t) {
-		if c.IsEarlyClose(t) {
-			if c.session.EarlyClose == time.Duration(0) {
-				panic(errNoEarlyClose)
-			}
-			return BOD(t).Add(c.session.EarlyClose)
+	for ; k <= c.d.last; k++ {
+		if s, ok := c.d.session(k); ok {
+			return s.hours(k, c.Loc).Close
 		}
-		return BOD(t).Add(c.session.Close)
 	}
-	return c.NextClose(c.NextBusinessDay(t))
+	return time.Time{}
 }
 
 func (c *Calendar) String() string {
-	str := fmt.Sprintf("Calendar %v:\n", c.Name)
-	var allts []int
-	for _, ts := range c.hts {
-		allts = append(allts, int(ts))
-	}
-	for _, ts := range c.ects {
-		allts = append(allts, int(ts))
-	}
-	sort.Ints(allts)
-	for _, ts := range allts {
-		t := int64(ts)
-		h, ok := c.hmap[t]
-		if ok {
-			str += fmt.Sprintf("\t%-15v    %v\n", time.Unix(t, 0).In(c.Loc).Format("2006-Jan-02 Mon"), h.Name)
-		}
-		ec, ok := c.ecmap[t]
-		if ok {
-			str += fmt.Sprintf("\t%-15v ec %v\n", time.Unix(t, 0).In(c.Loc).Format("2006-Jan-02 Mon"), ec.Name)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Calendar %v:\n", c.Name)
+	for k := c.d.first; k <= c.d.last; k++ {
+		if name, ok := c.d.holidays[k]; ok {
+			if name == "" {
+				name = "Closed"
+			}
+			fmt.Fprintf(&b, "\t%-15v    %v\n", k.midnight(c.Loc).Format("2006-Jan-02 Mon"), name)
+		} else if c.IsEarlyClose(k.midnight(c.Loc)) {
+			fmt.Fprintf(&b, "\t%-15v ec Early close\n", k.midnight(c.Loc).Format("2006-Jan-02 Mon"))
 		}
 	}
-
-	return str
+	return b.String()
 }
-
-var errNoSession = errors.New("no Session defined")
-var errNoEarlyClose = errors.New("no EarlyClose defined")
