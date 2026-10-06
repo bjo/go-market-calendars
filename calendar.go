@@ -155,7 +155,8 @@ func (c *Calendar) IsBusinessDay(t time.Time) bool {
 // IsHoliday reports whether the calendar date of t is a weekday on which the
 // exchange is closed. Weekends are not holidays.
 func (c *Calendar) IsHoliday(t time.Time) bool {
-	_, ok := c.d.holidays[dayOf(t)]
+	holidays, _ := c.d.effectiveHolidays()
+	_, ok := holidays[dayOf(t)]
 	return ok
 }
 
@@ -244,12 +245,12 @@ func (c *Calendar) stepBusinessDay(t time.Time, step int) time.Time {
 // NextHoliday returns the first holiday after the calendar date of t. It
 // returns the zero time and nil when there is none within the coverage range.
 func (c *Calendar) NextHoliday(t time.Time) (time.Time, *Holiday) {
-	k := dayOf(t)
-	i := c.d.holidayIndex(k + 1)
-	if i == len(c.d.holidayDays) {
+	holidays, days := c.d.effectiveHolidays()
+	i := holidayIndex(days, dayOf(t)+1)
+	if i == len(days) {
 		return time.Time{}, nil
 	}
-	h := c.holiday(c.d.holidayDays[i])
+	h := Holiday{Name: holidays[days[i]], Date: days[i].midnight(c.Loc)}
 	return h.Date, &h
 }
 
@@ -258,14 +259,11 @@ func (c *Calendar) NextHoliday(t time.Time) (time.Time, *Holiday) {
 func (c *Calendar) Holidays(start, end time.Time) []Holiday {
 	var out []Holiday
 	last := dayOf(end)
-	for i := c.d.holidayIndex(dayOf(start)); i < len(c.d.holidayDays) && c.d.holidayDays[i] <= last; i++ {
-		out = append(out, c.holiday(c.d.holidayDays[i]))
+	holidays, days := c.d.effectiveHolidays()
+	for i := holidayIndex(days, dayOf(start)); i < len(days) && days[i] <= last; i++ {
+		out = append(out, Holiday{Name: holidays[days[i]], Date: days[i].midnight(c.Loc)})
 	}
 	return out
-}
-
-func (c *Calendar) holiday(k day) Holiday {
-	return Holiday{Name: c.d.holidays[k], Date: k.midnight(c.Loc)}
 }
 
 // NextClose returns the close of the session on the calendar date of t, or of
@@ -287,8 +285,9 @@ func (c *Calendar) NextClose(t time.Time) time.Time {
 func (c *Calendar) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Calendar %v:\n", c.Name)
+	holidays, _ := c.d.effectiveHolidays()
 	for k := c.d.first; k <= c.d.last; k++ {
-		if name, ok := c.d.holidays[k]; ok {
+		if name, ok := holidays[k]; ok {
 			if name == "" {
 				name = "Closed"
 			}

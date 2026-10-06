@@ -98,6 +98,7 @@ written, in t's own location**. So `2025-01-09T00:00Z` asks about 9 January.
 | `Session()` | the regular hours in force today, as offsets from midnight |
 | `Range()`, `Years()`, `InRange(t)`, `Check(t)` | the coverage range |
 | `GetCalendar(mic)`, `Names()` | registry lookup |
+| `SetAdjustments(mic, adj)`, `Adjustments(mic)` | runtime overrides of individual dates |
 
 ### Differences from scmhub/calendar
 
@@ -111,6 +112,28 @@ written, in t's own location**. So `2025-01-09T00:00Z` asks about 9 January.
   source defines them (for US equities, `EarlyOpen` is 04:00 and `LateClose` is
   20:00).
 - Out-of-range dates never panic.
+
+### Runtime adjustments
+
+Exchanges sometimes announce a closure or changed hours at short notice,
+before upstream calendars release the change. `SetAdjustments` overrides
+individual dates at runtime, for every `Calendar` of that exchange,
+including values created earlier:
+
+```go
+err := calendar.SetAdjustments("xnys", []calendar.Adjustment{
+	{Date: time.Date(2027, 1, 4, 0, 0, 0, 0, calendar.NewYork), Closed: true, Name: "National day of mourning"},
+	{Date: time.Date(2027, 1, 5, 0, 0, 0, 0, calendar.NewYork),
+		Open:  time.Date(2027, 1, 5, 9, 30, 0, 0, calendar.NewYork),
+		Close: time.Date(2027, 1, 5, 13, 0, 0, 0, calendar.NewYork)},
+})
+```
+
+Each call replaces the whole set for that exchange, and `nil` clears it.
+Swaps are atomic, so the call is safe while other goroutines query. Every
+query honours adjustments, including holidays, early closes and the
+Next/Previous searches. `Adjustments(code)` returns the installed set. For
+corrections that should ship with the data, use `overrides.toml` instead.
 
 ## Exchanges
 
