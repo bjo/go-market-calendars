@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -94,6 +95,7 @@ type calData struct {
 	special            map[day]special
 	sessions           int
 	sha256             string
+	adj                atomic.Pointer[adjustedView] // runtime adjustments; nil when none
 }
 
 func (d *calData) regular(k day) hours {
@@ -104,10 +106,19 @@ func (d *calData) regular(k day) hours {
 	return d.periods[i].hours
 }
 
-// session returns the hours of the session on day k, if k is one.
-func (d *calData) session(k day) (hours, bool) {
+// session returns the hours of the session on day k in the generated data.
+func (d *calData) session(k day) (hours, bool) { return d.sessionIn(nil, k) }
+
+// sessionIn returns the hours of the session on day k, if k is one. The
+// adjustments in v, if any, take precedence over the generated data.
+func (d *calData) sessionIn(v *adjustedView, k day) (hours, bool) {
 	if k < d.first || k > d.last {
 		return hours{}, false
+	}
+	if v != nil {
+		if a, ok := v.byDay[k]; ok {
+			return a.hours, !a.closed
+		}
 	}
 	sp, isSpecial := d.special[k]
 	if isSpecial && sp.extra {
@@ -125,8 +136,8 @@ func (d *calData) session(k day) (hours, bool) {
 	return d.regular(k), true
 }
 
-func (d *calData) holidayIndex(k day) int {
-	return sort.Search(len(d.holidayDays), func(i int) bool { return d.holidayDays[i] >= k })
+func holidayIndex(days []day, k day) int {
+	return sort.Search(len(days), func(i int) bool { return days[i] >= k })
 }
 
 // --------------------------------------------------------------------------

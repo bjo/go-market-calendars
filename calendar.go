@@ -96,10 +96,11 @@ type Holiday struct {
 // nearest covered date, returning the zero time when the coverage range has
 // no answer in that direction.
 type Calendar struct {
-	Name    string
-	Loc     *time.Location
-	d       *calData
-	session *Session
+	Name       string
+	Loc        *time.Location
+	d          *calData
+	session    *Session
+	unadjusted bool // see Unadjusted
 }
 
 // Code returns the calendar's registry code, e.g. "xnys".
@@ -148,14 +149,15 @@ func (c *Calendar) Check(t time.Time) error {
 
 // IsBusinessDay reports whether the calendar date of t is a trading session.
 func (c *Calendar) IsBusinessDay(t time.Time) bool {
-	_, ok := c.d.session(dayOf(t))
+	_, ok := c.sessionOn(dayOf(t))
 	return ok
 }
 
 // IsHoliday reports whether the calendar date of t is a weekday on which the
 // exchange is closed. Weekends are not holidays.
 func (c *Calendar) IsHoliday(t time.Time) bool {
-	_, ok := c.d.holidays[dayOf(t)]
+	holidays, _ := c.holidaysInForce()
+	_, ok := holidays[dayOf(t)]
 	return ok
 }
 
@@ -163,7 +165,7 @@ func (c *Calendar) IsHoliday(t time.Time) bool {
 // before the regular close.
 func (c *Calendar) IsEarlyClose(t time.Time) bool {
 	k := dayOf(t)
-	s, ok := c.d.session(k)
+	s, ok := c.sessionOn(k)
 	return ok && s.close < c.d.regular(k).close
 }
 
@@ -171,7 +173,7 @@ func (c *Calendar) IsEarlyClose(t time.Time) bool {
 // the regular open.
 func (c *Calendar) IsLateOpen(t time.Time) bool {
 	k := dayOf(t)
-	s, ok := c.d.session(k)
+	s, ok := c.sessionOn(k)
 	return ok && s.open > c.d.regular(k).open
 }
 
@@ -182,7 +184,7 @@ func (c *Calendar) IsOpen(t time.Time) bool {
 	today := dayOf(lt)
 	// A session can open on the previous evening or close after midnight.
 	for _, k := range []day{today - 1, today, today + 1} {
-		s, ok := c.d.session(k)
+		s, ok := c.sessionOn(k)
 		if !ok {
 			continue
 		}
@@ -202,7 +204,7 @@ func (c *Calendar) IsOpen(t time.Time) bool {
 // of t. ok is false when that date is not a session.
 func (c *Calendar) SessionHours(t time.Time) (h SessionHours, ok bool) {
 	k := dayOf(t)
-	s, ok := c.d.session(k)
+	s, ok := c.sessionOn(k)
 	if !ok {
 		return SessionHours{}, false
 	}
@@ -234,7 +236,7 @@ func (c *Calendar) stepBusinessDay(t time.Time, step int) time.Time {
 		k = c.d.last + 1
 	}
 	for k += day(step); k >= c.d.first && k <= c.d.last; k += day(step) {
-		if _, ok := c.d.session(k); ok {
+		if _, ok := c.sessionOn(k); ok {
 			return t.AddDate(0, 0, int(k-from))
 		}
 	}
@@ -244,12 +246,12 @@ func (c *Calendar) stepBusinessDay(t time.Time, step int) time.Time {
 // NextHoliday returns the first holiday after the calendar date of t. It
 // returns the zero time and nil when there is none within the coverage range.
 func (c *Calendar) NextHoliday(t time.Time) (time.Time, *Holiday) {
-	k := dayOf(t)
-	i := c.d.holidayIndex(k + 1)
-	if i == len(c.d.holidayDays) {
+	holidays, days := c.holidaysInForce()
+	i := holidayIndex(days, dayOf(t)+1)
+	if i == len(days) {
 		return time.Time{}, nil
 	}
-	h := c.holiday(c.d.holidayDays[i])
+	h := Holiday{Name: holidays[days[i]], Date: days[i].midnight(c.Loc)}
 	return h.Date, &h
 }
 
@@ -258,14 +260,11 @@ func (c *Calendar) NextHoliday(t time.Time) (time.Time, *Holiday) {
 func (c *Calendar) Holidays(start, end time.Time) []Holiday {
 	var out []Holiday
 	last := dayOf(end)
-	for i := c.d.holidayIndex(dayOf(start)); i < len(c.d.holidayDays) && c.d.holidayDays[i] <= last; i++ {
-		out = append(out, c.holiday(c.d.holidayDays[i]))
+	holidays, days := c.holidaysInForce()
+	for i := holidayIndex(days, dayOf(start)); i < len(days) && days[i] <= last; i++ {
+		out = append(out, Holiday{Name: holidays[days[i]], Date: days[i].midnight(c.Loc)})
 	}
 	return out
-}
-
-func (c *Calendar) holiday(k day) Holiday {
-	return Holiday{Name: c.d.holidays[k], Date: k.midnight(c.Loc)}
 }
 
 // NextClose returns the close of the session on the calendar date of t, or of
@@ -277,7 +276,7 @@ func (c *Calendar) NextClose(t time.Time) time.Time {
 		k = c.d.first
 	}
 	for ; k <= c.d.last; k++ {
-		if s, ok := c.d.session(k); ok {
+		if s, ok := c.sessionOn(k); ok {
 			return s.hours(k, c.Loc).Close
 		}
 	}
@@ -287,8 +286,9 @@ func (c *Calendar) NextClose(t time.Time) time.Time {
 func (c *Calendar) String() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Calendar %v:\n", c.Name)
+	holidays, _ := c.holidaysInForce()
 	for k := c.d.first; k <= c.d.last; k++ {
-		if name, ok := c.d.holidays[k]; ok {
+		if name, ok := holidays[k]; ok {
 			if name == "" {
 				name = "Closed"
 			}
