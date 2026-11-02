@@ -1,7 +1,7 @@
 {
   "code": "xjpx",
   "name": "Japan Exchange Group",
-  "source": "pandas_market_calendars 5.5.0 calendar JPX",
+  "source": "pandas_market_calendars 5.6.0 calendar JPX",
   "tz": "Asia/Tokyo",
   "weekmask": "1111100",
   "first": "1997-01-01",

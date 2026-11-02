@@ -1,7 +1,7 @@
 {
   "code": "xdub",
   "name": "Euronext Dublin",
-  "source": "pandas_market_calendars 5.5.0 calendar XDUB",
+  "source": "pandas_market_calendars 5.6.0 calendar XDUB",
   "tz": "Europe/Dublin",
   "weekmask": "1111100",
   "first": "1970-01-01",

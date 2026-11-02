@@ -1,7 +1,7 @@
 {
   "code": "xnse",
   "name": "National Stock Exchange of India",
-  "source": "pandas_market_calendars 5.5.0 calendar XNSE",
+  "source": "pandas_market_calendars 5.6.0 calendar XNSE",
   "tz": "Asia/Calcutta",
   "weekmask": "1111100",
   "first": "1996-01-01",

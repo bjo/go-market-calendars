@@ -1,7 +1,7 @@
 {
   "code": "xfra",
   "name": "Frankfurt Stock Exchange",
-  "source": "pandas_market_calendars 5.5.0 calendar XFRA",
+  "source": "pandas_market_calendars 5.6.0 calendar XFRA",
   "tz": "Europe/Berlin",
   "weekmask": "1111100",
   "first": "1970-01-01",

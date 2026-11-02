@@ -1,7 +1,7 @@
 {
   "code": "xetr",
   "name": "Deutsche Börse Xetra",
-  "source": "pandas_market_calendars 5.5.0 calendar XETR",
+  "source": "pandas_market_calendars 5.6.0 calendar XETR",
   "tz": "Europe/Berlin",
   "weekmask": "1111100",
   "first": "1997-11-28",

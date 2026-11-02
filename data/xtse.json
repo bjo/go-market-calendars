@@ -1,7 +1,7 @@
 {
   "code": "xtse",
   "name": "Toronto Stock Exchange",
-  "source": "pandas_market_calendars 5.5.0 calendar XTSE",
+  "source": "pandas_market_calendars 5.6.0 calendar XTSE",
   "tz": "America/Toronto",
   "weekmask": "1111100",
   "first": "1970-01-01",

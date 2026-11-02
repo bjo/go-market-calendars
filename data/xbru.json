@@ -1,7 +1,7 @@
 {
   "code": "xbru",
   "name": "Euronext Brussels",
-  "source": "pandas_market_calendars 5.5.0 calendar XBRU",
+  "source": "pandas_market_calendars 5.6.0 calendar XBRU",
   "tz": "Europe/Brussels",
   "weekmask": "1111100",
   "first": "1970-01-01",

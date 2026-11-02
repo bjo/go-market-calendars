@@ -1,7 +1,7 @@
 {
   "code": "xnze",
   "name": "New Zealand Exchange",
-  "source": "pandas_market_calendars 5.5.0 calendar XNZE",
+  "source": "pandas_market_calendars 5.6.0 calendar XNZE",
   "tz": "Pacific/Auckland",
   "weekmask": "1111100",
   "first": "1970-01-01",

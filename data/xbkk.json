@@ -1,7 +1,7 @@
 {
   "code": "xbkk",
   "name": "Stock Exchange of Thailand",
-  "source": "pandas_market_calendars 5.5.0 calendar XBKK",
+  "source": "pandas_market_calendars 5.6.0 calendar XBKK",
   "tz": "Asia/Bangkok",
   "weekmask": "1111100",
   "first": "1975-04-30",
