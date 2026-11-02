@@ -1,7 +1,7 @@
 {
   "code": "xhel",
   "name": "Nasdaq Helsinki",
-  "source": "pandas_market_calendars 5.5.0 calendar XHEL",
+  "source": "pandas_market_calendars 5.6.0 calendar XHEL",
   "tz": "Europe/Helsinki",
   "weekmask": "1111100",
   "first": "1970-01-01",

@@ -1,7 +1,7 @@
 {
   "code": "bvmf",
   "name": "B3 - Brasil Bolsa Balcão",
-  "source": "pandas_market_calendars 5.5.0 calendar BVMF",
+  "source": "pandas_market_calendars 5.6.0 calendar BVMF",
   "tz": "America/Sao_Paulo",
   "weekmask": "1111100",
   "first": "1970-01-01",

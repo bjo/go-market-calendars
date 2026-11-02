@@ -1,7 +1,7 @@
 {
   "code": "xkrx",
   "name": "Korea Exchange",
-  "source": "pandas_market_calendars 5.5.0 calendar XKRX",
+  "source": "pandas_market_calendars 5.6.0 calendar XKRX",
   "tz": "Asia/Seoul",
   "weekmask": "1111100",
   "first": "1970-01-01",

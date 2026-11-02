@@ -1,7 +1,7 @@
 {
   "code": "xtks",
   "name": "Tokyo Stock Exchange",
-  "source": "pandas_market_calendars 5.5.0 calendar XTKS",
+  "source": "pandas_market_calendars 5.6.0 calendar XTKS",
   "tz": "Asia/Tokyo",
   "weekmask": "1111100",
   "first": "1997-01-01",

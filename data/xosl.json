@@ -1,7 +1,7 @@
 {
   "code": "xosl",
   "name": "Oslo Børs",
-  "source": "pandas_market_calendars 5.5.0 calendar XOSL",
+  "source": "pandas_market_calendars 5.6.0 calendar XOSL",
   "tz": "Europe/Oslo",
   "weekmask": "1111100",
   "first": "1970-01-01",

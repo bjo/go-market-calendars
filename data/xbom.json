@@ -1,7 +1,7 @@
 {
   "code": "xbom",
   "name": "BSE (Bombay Stock Exchange)",
-  "source": "pandas_market_calendars 5.5.0 calendar XBOM",
+  "source": "pandas_market_calendars 5.6.0 calendar XBOM",
   "tz": "Asia/Calcutta",
   "weekmask": "1111100",
   "first": "1997-01-01",

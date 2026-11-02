@@ -1,7 +1,7 @@
 {
   "code": "xtai",
   "name": "Taiwan Stock Exchange",
-  "source": "pandas_market_calendars 5.5.0 calendar XTAI",
+  "source": "pandas_market_calendars 5.6.0 calendar XTAI",
   "tz": "Asia/Taipei",
   "weekmask": "1111100",
   "first": "1970-01-01",
