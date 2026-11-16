@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -12,7 +12,7 @@ resolution-markers = [
 
 [[package]]
 name = "exchange-calendars"
-version = "4.13.2"
+version = "4.13.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "korean-lunar-calendar" },
@@ -22,9 +22,9 @@ dependencies = [
     { name = "toolz" },
     { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/73/460b0ece4e7444e3098b7738974c822787e134578d069d3a88b4be17d50a/exchange_calendars-4.13.2.tar.gz", hash = "sha256:a9459425dd64142cd54fbc639847403c7e0c33d60fbc326c94fc1d6bd127f002", size = 4137321, upload-time = "2026-03-10T03:24:38.536Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/de/8e/a18a7993d9b0c8d63f7d630cae8e18c18c5d87a1cdfac59e3a03bf6c5f7c/exchange_calendars-4.13.3.tar.gz", hash = "sha256:e4280cb77f58b32123ee1049018872533483bcecca70f74a5bc7fde2a6c73183", size = 4168413, upload-time = "2026-11-14T15:25:38.282Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/4c/0469b40057bc9f8d9594dcc6024202626b981ae4b52dfcd304552e8e1c3a/exchange_calendars-4.13.2-py3-none-any.whl", hash = "sha256:fc5a2ad0d61b5c3a6539a3061cd4cbb55c59f4a903455cec7926e4b798919996", size = 213306, upload-time = "2026-03-10T03:24:37.055Z" },
+    { url = "https://files.pythonhosted.org/packages/08/aa/aeb1e48faeca17e63487b959de88cb15003dfe5f872fe09f9168cf7fae47/exchange_calendars-4.13.3-py3-none-any.whl", hash = "sha256:02b95a738b3848ab9c52529330f84a15f76c765edeb7790cfbbf0d45d92cc2b5", size = 216086, upload-time = "2026-11-14T15:25:36.523Z" },
 ]
 
 [[package]]
@@ -184,15 +184,15 @@ wheels = [
 
 [[package]]
 name = "pandas-market-calendars"
-version = "5.5.0"
+version = "5.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "exchange-calendars" },
     { name = "pandas" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/23/c3/66932222d7ea10f49a1c1dc5bfed1c42addf0283e6bd31445c59ca4eb655/pandas_market_calendars-5.5.0.tar.gz", hash = "sha256:3b586618e87b747e937636d0e1e4bf9e14f67e5996fa3170243e96278cb6e29d", size = 185923, upload-time = "2026-10-05T00:55:24.069Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8c/77/f9e14d25a1a9fc0d87ca4419613052bf218008052066c558e10a36e139aa/pandas_market_calendars-5.6.1.tar.gz", hash = "sha256:72ae3d3da7cc62cccca1a899d957a220b8448bc488bc29d4ee84d7992d380589", size = 201602, upload-time = "2026-11-14T03:03:23.112Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/e0/25f5c0cf8852681ec8a44c7678897e39cc219f4d8a7150fedf38a648e067/pandas_market_calendars-5.5.0-py3-none-any.whl", hash = "sha256:ddca6fb04b07b47bf026c33629e852d3c554caeb148cd0cfb1588ce25881e10d", size = 141132, upload-time = "2026-10-05T00:55:21.949Z" },
+    { url = "https://files.pythonhosted.org/packages/20/2c/5521bf94c87a0b932a3dc3186a95dc1f5884f6b5a931bd5e00bf86e2088c/pandas_market_calendars-5.6.1-py3-none-any.whl", hash = "sha256:481056fa8c7630b97d485fc7e1e58b0a19a0916fcbe8734f91a1afec126f49ba", size = 148630, upload-time = "2026-11-14T03:03:21.662Z" },
 ]
 
 [[package]]
